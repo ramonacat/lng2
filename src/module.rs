@@ -1,36 +1,48 @@
-use inkwell::{
-    context::Context,
-    execution_engine::{JitFunction, UnsafeFunctionPointer},
-    module::Module,
-};
+use std::fmt::Debug;
+
+use inkwell::{context::Context, execution_engine::ExecutionEngine, module::Module};
 
 pub struct ModuleCompiler<'ctx> {
     context: &'ctx Context,
     module: Module<'ctx>,
-    execution_engine: inkwell::execution_engine::ExecutionEngine<'ctx>,
 }
 
 impl<'ctx> ModuleCompiler<'ctx> {
-    pub(super) fn new(context: &'ctx Context, module: Module<'ctx>) -> Self {
-        let execution_engine = module
+    pub(super) const fn new(context: &'ctx Context, module: Module<'ctx>) -> Self {
+        Self { context, module }
+    }
+
+    pub(crate) fn build<TReturn>(
+        &self,
+        compile_insides: impl FnOnce(&'ctx Context, &Module<'ctx>) -> TReturn,
+    ) -> TReturn {
+        compile_insides(self.context, &self.module)
+    }
+
+    pub(crate) fn run(&self, action: impl Fn(&ExecutionEngine<'ctx>)) {
+        let execution_engine = self
+            .module
             .create_jit_execution_engine(inkwell::OptimizationLevel::Default)
             .unwrap();
 
-        Self {
-            context,
-            module,
-            execution_engine,
-        }
+        self.module.verify().unwrap();
+
+        execution_engine.run_static_constructors();
+        action(&execution_engine);
+        execution_engine.run_static_destructors();
     }
+}
 
-    /// SAFETY: The `compile_insides` closure must create a function, whose signature matches `TReturn`
-    pub(super) unsafe fn build_function<TReturn: UnsafeFunctionPointer>(
-        &self,
-        name: &str,
-        compile_insides: impl FnOnce(&'ctx Context, &Module<'ctx>),
-    ) -> JitFunction<TReturn> {
-        compile_insides(self.context, &self.module);
-
-        unsafe { self.execution_engine.get_function(name) }.unwrap()
+impl Debug for ModuleCompiler<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{}",
+            &self
+                .module
+                .print_to_string()
+                .to_string()
+                .replace("\\n", "\n"),
+        )
     }
 }
