@@ -13,9 +13,9 @@ pub struct ObjectFunctions<'ctx> {
 }
 
 pub fn generate_object_functions<'ctx>(
-    module_compiler: &ModuleCompiler<'ctx>,
+    module_compiler: &mut ModuleCompiler<'ctx>,
 ) -> ObjectFunctions<'ctx> {
-    module_compiler.build(|context, module| {
+    module_compiler.build(|context, module, _| {
         let object_type = context.opaque_struct_type("object_type");
         object_type.set_body(
             &[

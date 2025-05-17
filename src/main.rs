@@ -14,9 +14,9 @@ fn main() {
     let context = Context::create();
     let module = context.create_module("main");
 
-    let module_compiler = ModuleCompiler::new(&context, module);
+    let mut module_compiler = ModuleCompiler::new(&context, module);
 
-    module_compiler.build(|context, module| {
+    module_compiler.build(|context, module, _| {
         let builder = context.create_builder();
         let type_ = context.i64_type().fn_type(&[], false);
         let function = module.add_function("main", type_, Some(Linkage::External));
@@ -27,8 +27,8 @@ fn main() {
             .build_return(Some(&context.i64_type().const_int(12_456_789, false)))
             .unwrap();
     });
-    let object_functions = crate::object::generate_object_functions(&module_compiler);
-    crate::vector::generate_vector_definition(&module_compiler, &object_functions);
+    let object_functions = crate::object::generate_object_functions(&mut module_compiler);
+    crate::vector::generate_vector_definition(&mut module_compiler, &object_functions);
 
     println!("{module_compiler:?}");
 
