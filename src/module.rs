@@ -187,6 +187,9 @@ impl<'ctx> ModuleCompiler<'ctx> {
 
         let execution_engine = self
             .module
+            // TODO ensure that the allocator is the same one that is used by Rust, we might need
+            // to switch to `create_mcjit_execution_engine_with_memory_manager` and pass out own
+            // allocator
             .create_jit_execution_engine(inkwell::OptimizationLevel::Default)
             .unwrap();
 

@@ -1,12 +1,46 @@
+use std::ffi::CStr;
+
 use inkwell::{types::BasicType, values::FunctionValue};
 
 use crate::{ADDRESS_SPACE, module::ModuleCompiler};
 
+#[repr(u8)]
+#[allow(unused)]
+enum ObjectFieldKind {
+    U8 = 1,
+    Object = 64,
+}
+
+#[allow(unused)]
+union FieldValue {
+    u64: u64,
+    object: *mut Object,
+}
+
+#[repr(C)]
+struct Field {
+    name: *const CStr,
+    value: FieldValue,
+    value_kind: ObjectFieldKind,
+}
+
+#[repr(C)]
+struct ImplementedInterface {
+    name: *const CStr,
+    interface_definition: *mut Object,
+}
+
 #[repr(C)]
 #[allow(unused)] // TODO use it 
-struct ObjectHandle {}
+struct Object {
+    fields: *mut Field,
+    field_count: u64,
+    interfaces: *mut ImplementedInterface,
+    interface_count: u64,
 
-#[allow(unused)] // TODO use it 
+    type_: *mut Object,
+}
+
 pub struct ObjectFunctions<'ctx> {
     pub create: FunctionValue<'ctx>,
     pub destroy: FunctionValue<'ctx>,
@@ -20,6 +54,14 @@ pub fn generate_object_functions<'ctx>(
         object_type.set_body(
             &[
                 // fields:
+                context.ptr_type(*ADDRESS_SPACE).as_basic_type_enum(),
+                // field_count:
+                context.i64_type().as_basic_type_enum(),
+                // interfaces:
+                context.ptr_type(*ADDRESS_SPACE).as_basic_type_enum(),
+                // interface_count:
+                context.i64_type().as_basic_type_enum(),
+                // type_:
                 context.ptr_type(*ADDRESS_SPACE).as_basic_type_enum(),
             ],
             false,
