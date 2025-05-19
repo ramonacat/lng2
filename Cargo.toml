@@ -5,4 +5,8 @@ edition = "2024"
 
 [dependencies]
 inkwell = { version = "0.6.0", features = ["llvm18-1"] }
+lalrpop-util = {version = "0.22.1", features = ["lexer"]}
+string-interner = "0.19.0"
 
+[build-dependencies]
+lalrpop = "0.22.1"

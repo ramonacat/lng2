@@ -1,16 +1,32 @@
 #![deny(clippy::all, clippy::pedantic, clippy::nursery, warnings)]
+mod ast;
+mod identifier;
 mod module;
 mod object;
+mod parser;
 mod vector;
 
 use std::sync::LazyLock;
 
 use inkwell::{AddressSpace, context::Context, module::Linkage};
 use module::ModuleCompiler;
+use parser::parse;
 
 static ADDRESS_SPACE: LazyLock<AddressSpace> = LazyLock::new(AddressSpace::default);
 
 fn main() {
+    parse(
+        "
+        class MyClass {
+            #[extern(\"println\")]
+            fn printline();
+
+            fn main() {
+                MyClass.printline();
+            }
+        }
+    ",
+    );
     let context = Context::create();
     let module = context.create_module("main");
 

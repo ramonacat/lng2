@@ -1,0 +1,60 @@
+use crate::identifier::{Identifiers, Identifier};
+use crate::ast;
+
+grammar(identifiers: &mut Identifiers);
+
+String: String = {
+    r#""(\\"|[^"])*""# => String::from(<>)
+}
+
+Identifier: Identifier = {
+    r"\p{ID_Start}\p{ID_Continue}*" => identifiers.intern(<>)
+};
+
+Expression: ast::Expression = {
+    <variable:Identifier> => ast::Expression::VariableAccess(variable),
+    <target:Expression> "." <name:Identifier> => ast::Expression::FieldAccess(Box::new(target), name),
+    <target:Expression> "(" ")" => ast::Expression::Call(Box::new(target)),
+}
+
+Statement: ast::Statement = {
+    <expression:Expression> ";" => ast::Statement::Expression(expression)
+}
+
+FunctionPrototype: ast::FunctionPrototype = {
+    "fn" <name:Identifier> "(" ")" => ast::FunctionPrototype {
+        name
+    }
+}
+
+Function: ast::Function = {
+    <prototype:FunctionPrototype> "{" <statements:(<Statement>)*> "}" => ast::Function::Implemented {
+        prototype, 
+        statements
+    },
+    // TODO real support for attributes
+    "#" "[" "extern" "(" <external_name:String> ")" "]"
+    <prototype:FunctionPrototype> ";" => ast::Function::Extern {
+        external_name,
+        prototype
+    }
+}
+
+Class: ast::Class = {
+    "class" <name:Identifier> "{"
+        <functions:(<Function>)*>
+    "}" => ast::Class {
+        name,
+        functions
+    }
+}
+
+Declaration: ast::Declaration = {
+    <class:Class> => ast::Declaration::Class(class),
+}
+
+pub SourceFile: ast::SourceFile = { 
+    <declarations:(<Declaration>)*> => ast::SourceFile {
+        declarations
+    }
+}
