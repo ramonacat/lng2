@@ -1,6 +1,7 @@
+use crate::types::function::FunctionId;
 use std::fmt::Write;
 
-use crate::identifier::Identifiers;
+use crate::{identifier::Identifiers, types::function::FunctionTypeKind};
 
 use super::{NodeType, SourceFile};
 
@@ -45,8 +46,8 @@ impl<TTarget: Write> PrettyPrinter<TTarget> {
     }
 }
 
-pub fn pretty_print<T: NodeType, TFunction: NodeType, TInner: NodeType>(
-    ast: &SourceFile<T, TFunction, TInner>,
+pub fn pretty_print<T: NodeType, TFunction: NodeType>(
+    ast: &SourceFile<T, TFunction>,
     identifiers: &Identifiers,
 ) -> Result<String, std::fmt::Error> {
     let mut printer = PrettyPrinter {
@@ -69,10 +70,10 @@ pub fn pretty_print<T: NodeType, TFunction: NodeType, TInner: NodeType>(
     Ok(printer.target)
 }
 
-fn print_declaration<T: NodeType, TFunction: NodeType, TInner: NodeType>(
+fn print_declaration<T: NodeType, TFunction: NodeType>(
     printer: &mut PrettyPrinter<impl Write>,
     identifiers: &Identifiers,
-    declaration: &super::Declaration<T, TFunction, TInner>,
+    declaration: &super::Declaration<T, TFunction>,
 ) -> std::fmt::Result {
     match declaration {
         super::Declaration::Class(class) => print_class(printer, identifiers, class)?,
@@ -81,10 +82,10 @@ fn print_declaration<T: NodeType, TFunction: NodeType, TInner: NodeType>(
     Ok(())
 }
 
-fn print_class<T: NodeType, TFunction: NodeType, TInner: NodeType>(
+fn print_class<T: NodeType, TFunction: NodeType>(
     printer: &mut PrettyPrinter<impl Write>,
     identifiers: &Identifiers,
-    class: &super::Class<T, TFunction, TInner>,
+    class: &super::Class<T, TFunction>,
 ) -> std::fmt::Result {
     println_to!(
         printer,
@@ -106,24 +107,41 @@ fn print_class<T: NodeType, TFunction: NodeType, TInner: NodeType>(
     Ok(())
 }
 
-fn print_function<T: NodeType, TInner: NodeType>(
+fn print_function<T: NodeType>(
     printer: &mut PrettyPrinter<impl Write>,
     identifiers: &Identifiers,
-    function: &super::Function<T, TInner>,
+    function: &super::Function<T>,
 ) -> std::fmt::Result {
-    print_to!(printer, "{}", function.type_.pretty(identifiers));
+    println_to!(printer, "");
 
-    match &function.kind {
-        // TODO move the prototype to the top-level ast::Function struct
-        crate::ast::FunctionKind::Implemented {
-            statements,
-            prototype,
-        } => {
-            writeln!(
-                printer.target,
-                "fn {}() {{",
-                identifiers.resolve(prototype.name)
-            )?;
+    println_to!(
+        printer,
+        "fn-named({})",
+        identifiers.resolve(function.prototype.name)
+    );
+
+    for line in function.type_.pretty(identifiers).lines() {
+        println_to!(printer, "{line}");
+    }
+
+    Ok(())
+}
+
+pub fn pretty_print_function_type(
+    id: FunctionId,
+    kind: &FunctionTypeKind,
+    identifiers: &Identifiers,
+) -> Result<String, std::fmt::Error> {
+    let mut printer = PrettyPrinter {
+        indent: 0,
+        target: String::new(),
+    };
+
+    print_to!(printer, "fn#{id:?} ");
+
+    match kind {
+        FunctionTypeKind::Statements(statements) => {
+            writeln!(printer.target, "{{")?;
 
             printer.indented(|printer| {
                 for statement in statements {
@@ -135,20 +153,12 @@ fn print_function<T: NodeType, TInner: NodeType>(
 
             println_to!(printer, "}}");
         }
-        crate::ast::FunctionKind::Extern {
-            external_name,
-            prototype,
-        } => {
-            writeln!(
-                printer.target,
-                "fn {}() = extern({});",
-                identifiers.resolve(prototype.name),
-                external_name
-            )?;
+        FunctionTypeKind::External(external_name) => {
+            writeln!(printer.target, "external(\"{external_name}\")")?;
         }
     }
 
-    Ok(())
+    Ok(printer.target)
 }
 
 fn print_statement<T: NodeType>(

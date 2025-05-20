@@ -1,4 +1,6 @@
 use crate::identifier::{Identifiers, Identifier};
+use crate::types::function::UncheckedFunctionType;
+use crate::types::function::UncheckedFunctionTypeKind;
 use crate::ast;
 
 grammar(identifiers: &mut Identifiers);
@@ -36,26 +38,20 @@ FunctionPrototype: ast::FunctionPrototype = {
     }
 }
 
-Function: ast::Function<(), ()> = {
+Function: ast::Function<UncheckedFunctionType> = {
     <prototype:FunctionPrototype> "{" <statements:(<Statement>)*> "}" => ast::Function { 
-        kind: ast::FunctionKind::Implemented {
-            prototype, 
-            statements
-        },
-        type_: (),
+        type_: UncheckedFunctionType::new(UncheckedFunctionTypeKind::Statements(statements)),
+        prototype
     },
     // TODO real support for attributes
     "#" "[" "extern" "(" <external_name:String> ")" "]"
     <prototype:FunctionPrototype> ";" => ast::Function {
-        kind: ast::FunctionKind::Extern {
-            external_name,
-            prototype
-        },
-        type_: ()
+        type_: UncheckedFunctionType::new(UncheckedFunctionTypeKind::External(external_name)),
+        prototype
     }
 }
 
-Class: ast::Class<(), (), ()> = {
+Class: ast::Class<(), UncheckedFunctionType> = {
     "class" <name:Identifier> "{"
         <functions:(<Function>)*>
     "}" => ast::Class {
@@ -65,11 +61,11 @@ Class: ast::Class<(), (), ()> = {
     }
 }
 
-Declaration: ast::Declaration<(), (), ()> = {
+Declaration: ast::Declaration<(), UncheckedFunctionType> = {
     <class:Class> => ast::Declaration::Class(class),
 }
 
-pub SourceFile: ast::SourceFile<(), (), ()> = { 
+pub SourceFile: ast::SourceFile<(), UncheckedFunctionType> = { 
     <declarations:(<Declaration>)*> => ast::SourceFile {
         declarations
     }

@@ -35,6 +35,7 @@ impl<'ctx> CompilerServices<'ctx> {
         }
     }
 
+    #[allow(unused)]
     pub(crate) fn add_global_construtor(
         &mut self,
         priority: u32,
@@ -48,6 +49,7 @@ impl<'ctx> CompilerServices<'ctx> {
         });
     }
 
+    #[allow(unused)]
     pub(crate) fn add_global_destructor(
         &mut self,
         priority: u32,
@@ -193,10 +195,21 @@ impl<'ctx> ModuleCompiler<'ctx> {
             .create_jit_execution_engine(inkwell::OptimizationLevel::Default)
             .unwrap();
 
+        // TODO this is a hack, we should provide the global mappings elsewhere
+        execution_engine.add_global_mapping(
+            &self.module.get_function("println").unwrap(),
+            printline as usize,
+        );
+
         execution_engine.run_static_constructors();
         action(&execution_engine);
         execution_engine.run_static_destructors();
     }
+}
+
+// TODO move this to stdlib
+extern "C" fn printline() {
+    println!("ok");
 }
 
 impl Debug for ModuleCompiler<'_> {
