@@ -1,6 +1,6 @@
 use lalrpop_util::{ParseError, lalrpop_mod};
 
-use crate::{ast, identifier::Identifiers};
+use crate::{ast, identifier::Identifiers, types::function::UncheckedFunctionType};
 
 lalrpop_mod!(
     #[allow(
@@ -25,7 +25,10 @@ lalrpop_mod!(
 
 // TODO this should probably return a Result and allow higher-level code to handle printing the
 // Errors
-pub fn parse(contents: &str, identifiers: &mut Identifiers) -> Option<ast::SourceFile<(), (), ()>> {
+pub fn parse(
+    contents: &str,
+    identifiers: &mut Identifiers,
+) -> Option<ast::SourceFile<(), UncheckedFunctionType>> {
     match grammar::SourceFileParser::new().parse(identifiers, contents) {
         Ok(ast) => Some(ast),
         Err(e) => {
