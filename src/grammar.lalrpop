@@ -4,20 +4,29 @@ use crate::ast;
 grammar(identifiers: &mut Identifiers);
 
 String: String = {
-    r#""(\\"|[^"])*""# => String::from(<>)
+    r#""(\\"|[^"])*""# => String::from(&<>[1..<>.len() - 1])
 }
 
 Identifier: Identifier = {
     r"\p{ID_Start}\p{ID_Continue}*" => identifiers.intern(<>)
 };
 
-Expression: ast::Expression = {
-    <variable:Identifier> => ast::Expression::VariableAccess(variable),
-    <target:Expression> "." <name:Identifier> => ast::Expression::FieldAccess(Box::new(target), name),
-    <target:Expression> "(" ")" => ast::Expression::Call(Box::new(target)),
+Expression: ast::Expression<()> = {
+    <variable:Identifier> => ast::Expression {
+        kind: ast::ExpressionKind::VariableAccess(variable),
+        type_: ()
+    },
+    <target:Expression> "." <name:Identifier> => ast::Expression {
+        kind: ast::ExpressionKind::FieldAccess(Box::new(target), name),
+        type_: ()
+    },
+    <target:Expression> "(" ")" => ast::Expression {
+        kind: ast::ExpressionKind::Call(Box::new(target)),
+        type_: ()
+    }
 }
 
-Statement: ast::Statement = {
+Statement: ast::Statement<()> = {
     <expression:Expression> ";" => ast::Statement::Expression(expression)
 }
 
@@ -27,33 +36,40 @@ FunctionPrototype: ast::FunctionPrototype = {
     }
 }
 
-Function: ast::Function = {
-    <prototype:FunctionPrototype> "{" <statements:(<Statement>)*> "}" => ast::Function::Implemented {
-        prototype, 
-        statements
+Function: ast::Function<(), ()> = {
+    <prototype:FunctionPrototype> "{" <statements:(<Statement>)*> "}" => ast::Function { 
+        kind: ast::FunctionKind::Implemented {
+            prototype, 
+            statements
+        },
+        type_: (),
     },
     // TODO real support for attributes
     "#" "[" "extern" "(" <external_name:String> ")" "]"
-    <prototype:FunctionPrototype> ";" => ast::Function::Extern {
-        external_name,
-        prototype
+    <prototype:FunctionPrototype> ";" => ast::Function {
+        kind: ast::FunctionKind::Extern {
+            external_name,
+            prototype
+        },
+        type_: ()
     }
 }
 
-Class: ast::Class = {
+Class: ast::Class<(), (), ()> = {
     "class" <name:Identifier> "{"
         <functions:(<Function>)*>
     "}" => ast::Class {
         name,
-        functions
+        functions,
+        type_: ()
     }
 }
 
-Declaration: ast::Declaration = {
+Declaration: ast::Declaration<(), (), ()> = {
     <class:Class> => ast::Declaration::Class(class),
 }
 
-pub SourceFile: ast::SourceFile = { 
+pub SourceFile: ast::SourceFile<(), (), ()> = { 
     <declarations:(<Declaration>)*> => ast::SourceFile {
         declarations
     }

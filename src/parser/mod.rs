@@ -1,6 +1,6 @@
 use lalrpop_util::{ParseError, lalrpop_mod};
 
-use crate::identifier::Identifiers;
+use crate::{ast, identifier::Identifiers};
 
 lalrpop_mod!(
     #[allow(
@@ -23,12 +23,16 @@ lalrpop_mod!(
     grammar
 );
 
-pub fn parse(contents: &str) {
-    let mut identifiers = Identifiers::new();
+// TODO this should probably return a Result and allow higher-level code to handle printing the
+// Errors
+pub fn parse(contents: &str, identifiers: &mut Identifiers) -> Option<ast::SourceFile<(), (), ()>> {
+    match grammar::SourceFileParser::new().parse(identifiers, contents) {
+        Ok(ast) => Some(ast),
+        Err(e) => {
+            pretty_error(contents, e);
 
-    match grammar::SourceFileParser::new().parse(&mut identifiers, contents) {
-        Ok(ast) => println!("{ast:?}"),
-        Err(e) => pretty_error(contents, e),
+            None
+        }
     }
 }
 
