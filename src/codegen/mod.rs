@@ -10,7 +10,7 @@ use inkwell::{
 use crate::{
     ast::{self, Class, Expression, Function},
     identifier::{Identifier, Identifiers},
-    module::{self, CompilerServices, ModuleCompiler},
+    module::{CompilerServices, ModuleCompiler},
     object::{self, ObjectFunctions, Value},
     types::{
         TypedAst,
@@ -42,40 +42,29 @@ impl<'ctx> ClassCompiler {
         // these arguments?
         context: &'ctx Context,
         module: &Module<'ctx>,
-        compiler_services: &mut module::CompilerServices<'ctx>,
-        identifiers: &Identifiers,
-        object_functions: &ObjectFunctions<'ctx>,
         class_declarations: &HashMap<Identifier, ClassDeclaration<'ctx>>,
     ) where
         'a: 'ctx,
     {
+        let class = class_declarations.get(&self.class.name).unwrap();
         let mut functions = vec![];
         std::mem::swap(&mut functions, &mut self.class.functions);
 
-        let fields = functions
-            .into_iter()
-            .map(|x| object::Field {
-                name: x.prototype.name,
-                value: object::Value::Callable(self.compile_function(
-                    x,
-                    context,
-                    module,
-                    class_declarations,
-                )),
-            })
-            .collect::<Vec<_>>();
-
-        object_functions.declare_class(
-            identifiers.resolve(self.class.name),
-            &fields,
-            context,
-            module,
-            compiler_services,
-        );
+        for function in functions {
+            let function_value = class.methods.get(&function.prototype.name).unwrap();
+            self.compile_function(
+                *function_value,
+                function,
+                context,
+                module,
+                class_declarations,
+            );
+        }
     }
 
     fn compile_function<'classes>(
         &mut self,
+        function_value: FunctionValue<'ctx>,
         function: Function<FunctionType>,
         context: &'ctx Context,
         module: &Module<'ctx>,
@@ -86,14 +75,8 @@ impl<'ctx> ClassCompiler {
     {
         match function.type_.into_kind() {
             function::FunctionTypeKind::Statements(statements) => {
-                let function = *class_declarations
-                    .get(&self.class.name)
-                    .unwrap()
-                    .methods
-                    .get(&function.prototype.name)
-                    .unwrap();
                 let builder = context.create_builder();
-                let entry_block = context.append_basic_block(function, "entry");
+                let entry_block = context.append_basic_block(function_value, "entry");
                 builder.position_at_end(entry_block);
 
                 for statement in statements {
@@ -108,7 +91,7 @@ impl<'ctx> ClassCompiler {
                 // that this we always have one (or never have one if the type is void)
                 builder.build_return(None).unwrap();
 
-                function
+                function_value
             }
             function::FunctionTypeKind::External(external_name) => {
                 let external = module.add_function(
@@ -181,43 +164,13 @@ impl<'ctx> ClassCompiler {
 
 struct ClassCompilers(HashMap<Identifier, ClassCompiler>);
 
-impl<'ctx> ClassCompilers {
+impl ClassCompilers {
     fn new() -> Self {
         Self(HashMap::new())
     }
 
     fn add(&mut self, class: Class<ClassType, FunctionType>) {
         self.0.insert(class.name, ClassCompiler::new(class));
-    }
-
-    // TODO this method is kinda dumb, we should just compile all the classes, and then the get
-    // will just be getting it and not touching the compiler really
-    #[allow(clippy::too_many_arguments)] // TODO we should be able to kill the args once we stop
-    // doing the compile here
-    fn get(
-        &mut self,
-        identifier: Identifier,
-        context: &'ctx Context,
-        module: &Module<'ctx>,
-        compiler_services: &mut CompilerServices<'ctx>,
-        identifiers: &Identifiers,
-        object_functions: &ObjectFunctions<'ctx>,
-        class_declarations: &HashMap<Identifier, ClassDeclaration<'ctx>>,
-    ) -> ClassDeclaration<'ctx> {
-        // TODO do we need to consider the case where there's just nothing to get? Or is it up to
-        // typecheck?
-        let compiler = self.0.get_mut(&identifier).unwrap();
-
-        compiler.compile_class(
-            context,
-            module,
-            compiler_services,
-            identifiers,
-            object_functions,
-            class_declarations,
-        );
-
-        class_declarations.get(&identifier).unwrap().clone()
     }
 }
 
@@ -329,23 +282,17 @@ impl<'ctx> ModuleGenerator<'ctx> {
                 for declaration in ast.declarations {
                     match declaration {
                         ast::Declaration::Class(class) => {
-                            // TODO instead of taking the last id as the entry point, we should
-                            // figure it out based on an annotation or smth
                             id = Some(class.name);
                             classes.add(class);
                         }
                     }
                 }
 
-                classes.get(
-                    id.unwrap(),
+                classes.0.get_mut(&id.unwrap()).unwrap().compile_class(
                     context,
                     module,
-                    compiler_services,
-                    self.identifiers,
-                    &self.object_functions,
                     &class_declarations,
-                )
+                );
             });
 
         println!("{:?}", &self.module_compiler);

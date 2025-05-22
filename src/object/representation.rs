@@ -1,10 +1,7 @@
 use std::ffi::CStr;
 
 #[repr(u8)]
-#[allow(unused)]
 pub enum ObjectFieldKind {
-    U8 = 1,
-    Object = 64,
     Callable = 128,
 }
 
