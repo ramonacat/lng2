@@ -15,12 +15,11 @@ use crate::{
 
 #[derive(Clone)]
 pub enum Value<'ctx> {
-    Callable(FunctionValue<'ctx>),
     None,
+    Callable(FunctionValue<'ctx>),
     Class(ClassDeclaration<'ctx>),
 }
 
-#[allow(unused)]
 pub struct Field<'ctx> {
     pub name: Identifier,
     pub value: Value<'ctx>,

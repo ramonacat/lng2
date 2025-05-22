@@ -8,18 +8,21 @@ use crate::{
 use super::expression::ExpressionType;
 
 #[derive(Debug, Clone, Copy)]
-#[allow(unused)]
 pub struct FunctionId(u64);
 
+impl FunctionId {
+    pub const fn into_u64(self) -> u64 {
+        self.0
+    }
+}
+
 #[derive(Debug)]
-#[allow(unused)]
 pub enum FunctionTypeKind {
     Statements(Vec<Statement<ExpressionType>>),
     External(String),
 }
 
 #[derive(Debug)]
-#[allow(unused)]
 pub struct FunctionType {
     id: FunctionId,
     kind: FunctionTypeKind,
@@ -47,7 +50,6 @@ impl NodeType for FunctionType {
 }
 
 #[derive(Debug)]
-#[allow(unused)]
 pub enum UncheckedFunctionTypeKind {
     Statements(Vec<Statement<()>>),
     External(String),

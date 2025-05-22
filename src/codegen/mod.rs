@@ -52,6 +52,7 @@ impl<'ctx> ClassCompiler {
 
         for function in functions {
             let function_value = class.methods.get(&function.prototype.name).unwrap();
+
             self.compile_function(
                 *function_value,
                 function,
@@ -180,6 +181,7 @@ pub struct ClassDeclaration<'ctx> {
     descriptor: PointerValue<'ctx>,
     methods: HashMap<Identifier, FunctionValue<'ctx>>,
 }
+
 impl<'ctx> ClassDeclaration<'ctx> {
     fn new(
         class: &Class<ClassType, FunctionType>,
@@ -194,15 +196,20 @@ impl<'ctx> ClassDeclaration<'ctx> {
             .iter()
             .map(|x| {
                 let resolved_name = identifiers.resolve(x.prototype.name);
+                // TODO this is very hacky, we need to add an attribute for the main function, and
+                // typecheck that only one exists in the program and that it has the right
+                // signature
+                let name = if resolved_name == "main" {
+                    resolved_name
+                } else {
+                    // TODO name mangling (tho this should be good enough as long as there are
+                    // no generics)
+                    &format!("{}_{}", resolved_name, x.type_.id().into_u64())
+                };
 
                 (
                     x.prototype.name,
-                    module.add_function(
-                        // TODO name mangling
-                        resolved_name,
-                        context.void_type().fn_type(&[], false),
-                        None,
-                    ),
+                    module.add_function(name, context.void_type().fn_type(&[], false), None),
                 )
             })
             .collect::<HashMap<_, _>>();

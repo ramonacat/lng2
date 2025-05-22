@@ -29,7 +29,6 @@ impl Identifiers {
         Identifier(self.interner.get_or_intern(string))
     }
 
-    #[allow(unused)]
     pub(crate) fn resolve(&self, identifier: Identifier) -> &str {
         self.interner.resolve(identifier.0).unwrap()
     }
