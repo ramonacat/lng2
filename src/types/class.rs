@@ -1,7 +1,5 @@
 use crate::{ast::NodeType, identifier::Identifiers};
 
-use super::function::FunctionId;
-
 #[derive(Debug)]
 pub struct UncheckedClassType {}
 impl UncheckedClassType {
@@ -17,14 +15,11 @@ impl NodeType for UncheckedClassType {
 }
 
 #[derive(Debug)]
-pub struct ClassType {
-    #[allow(unused)]
-    functions: Vec<FunctionId>,
-}
+pub struct ClassType {}
 
 impl ClassType {
-    pub(crate) const fn new(functions: Vec<FunctionId>) -> Self {
-        Self { functions }
+    pub(crate) const fn new() -> Self {
+        Self {}
     }
 }
 

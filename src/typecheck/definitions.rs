@@ -42,19 +42,16 @@ impl DefinitionsChecker {
         class: Class<UncheckedClassType, UncheckedFunctionType>,
     ) -> Class<ClassType, FunctionType> {
         let mut functions = vec![];
-        let mut function_ids = vec![];
 
         for function in class.functions {
             let checked_function = self.check_function(function);
-            function_ids.push(checked_function.type_.id());
-
             functions.push(checked_function);
         }
 
         Class {
             name: class.name,
             functions,
-            type_: ClassType::new(function_ids),
+            type_: ClassType::new(),
         }
     }
 

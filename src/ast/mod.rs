@@ -13,7 +13,6 @@ impl NodeType for () {
 }
 
 #[derive(Debug)]
-#[allow(unused)]
 pub struct Class<TClass: NodeType, TFunction: NodeType> {
     pub name: Identifier,
     pub functions: Vec<Function<TFunction>>,
@@ -21,7 +20,6 @@ pub struct Class<TClass: NodeType, TFunction: NodeType> {
 }
 
 #[derive(Debug)]
-#[allow(unused)]
 pub enum ExpressionKind<TExpression: NodeType> {
     Call(Box<Expression<TExpression>>),
     VariableAccess(Identifier),
@@ -29,43 +27,35 @@ pub enum ExpressionKind<TExpression: NodeType> {
 }
 
 #[derive(Debug)]
-#[allow(unused)]
 pub struct Expression<TExpression: NodeType> {
     pub kind: ExpressionKind<TExpression>,
+    // TODO This will most likely be needed once there are like assignments and stuff
+    #[allow(unused)]
     pub type_: TExpression,
 }
 
 #[derive(Debug)]
-#[allow(unused)]
 pub enum Statement<TExpression: NodeType> {
     Expression(Expression<TExpression>),
 }
 
 #[derive(Debug)]
-#[allow(unused)]
 pub struct FunctionPrototype {
     pub name: Identifier,
 }
 
 #[derive(Debug)]
-#[allow(unused)]
 pub struct Function<TFunction: NodeType> {
     pub prototype: FunctionPrototype,
     pub type_: TFunction,
 }
 
 #[derive(Debug)]
-#[allow(unused)]
-pub struct ExternFunction {}
-
-#[derive(Debug)]
-#[allow(unused)]
 pub enum Declaration<TClass: NodeType, TFunction: NodeType> {
     Class(Class<TClass, TFunction>),
 }
 
 #[derive(Debug)]
-#[allow(unused)]
 pub struct SourceFile<TClass: NodeType, TFunction: NodeType> {
     pub declarations: Vec<Declaration<TClass, TFunction>>,
 }

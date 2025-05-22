@@ -20,7 +20,8 @@ lalrpop_mod!(
         clippy::match_same_arms,
         clippy::unnested_or_patterns
     )]
-    grammar
+    grammar,
+    "/parser/grammar.rs"
 );
 
 // TODO this should probably return a Result and allow higher-level code to handle printing the
@@ -69,17 +70,20 @@ fn pretty_error(contents: &str, error: ParseError<usize, grammar::Token<'_>, &st
 }
 
 fn print_with_highlight(contents: &str, message: &str, highlight: usize) {
-    // TODO what are the actual units here? codepoints?
-    let mut printed_codepoints = 0;
+    let mut printed_bytes = 0;
+
     for line in contents.lines() {
         println!("{line}");
 
-        if printed_codepoints + line.len() > highlight {
-            print!("{}^", " ".repeat(highlight - printed_codepoints));
+        if printed_bytes + line.len() > highlight {
+            // TODO the calculation for the number is incorrect - (highlight-printed_bytes) is the
+            // length of the line in bytes, which does not have to be equal to the length in
+            // grapheme clusters!
+            print!("{}^", " ".repeat(highlight - printed_bytes));
             println!("{message}");
         }
 
         // TODO the 1 here is for line endings, but we have to consider the case of \r\n as well
-        printed_codepoints += line.len() + 1;
+        printed_bytes += line.len() + 1;
     }
 }

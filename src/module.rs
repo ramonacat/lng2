@@ -35,7 +35,6 @@ impl<'ctx> CompilerServices<'ctx> {
         }
     }
 
-    #[allow(unused)]
     pub(crate) fn add_global_construtor(
         &mut self,
         priority: u32,
