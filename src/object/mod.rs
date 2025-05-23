@@ -70,9 +70,8 @@ impl<'ctx> ObjectFunctions<'ctx> {
             false,
         );
 
-        // TODO use the actual name of the class here for the constructor name!
         let constructor = module.add_function(
-            "class_constructor",
+            &format!("class_constructor_{name}"),
             context.void_type().fn_type(&[], false),
             None,
         );

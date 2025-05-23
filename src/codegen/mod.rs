@@ -48,6 +48,7 @@ impl<'ctx> ClassCompiler {
     {
         let class = class_declarations.get(&self.class.name).unwrap();
         let mut functions = vec![];
+        // TODO get rid of this swap, we might need self.class.functions later (e.g. for calls)
         std::mem::swap(&mut functions, &mut self.class.functions);
 
         for function in functions {
@@ -63,6 +64,7 @@ impl<'ctx> ClassCompiler {
         }
     }
 
+    // TODO is 'classes needed for anything really?
     fn compile_function<'classes>(
         &mut self,
         function_value: FunctionValue<'ctx>,
@@ -128,6 +130,7 @@ impl<'ctx> ClassCompiler {
     ) -> Value<'ctx> {
         match expression.kind {
             ast::ExpressionKind::Call(expression) => {
+                // TODO differentiate between static and non-static methods
                 let expression = self.compile_expression(*expression, builder, class_declarations);
 
                 let Value::Callable(function_value) = expression else {
@@ -142,7 +145,6 @@ impl<'ctx> ClassCompiler {
                 Value::None
             }
             ast::ExpressionKind::VariableAccess(identifier) => {
-                // TODO actually get the class here ;)
                 Value::Class(class_declarations.get(&identifier).unwrap().clone())
             }
             ast::ExpressionKind::FieldAccess(target, field) => {
