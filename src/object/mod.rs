@@ -10,7 +10,7 @@ use representation::ObjectFieldKind;
 
 use crate::{
     ADDRESS_SPACE,
-    codegen::ClassDeclaration,
+    codegen::{ClassCompilerContext, ClassDeclaration},
     identifier::Identifier,
     module::{CompilerServices, ModuleCompiler},
 };
@@ -41,16 +41,11 @@ impl<'ctx> Field<'ctx> {
         Self { self_, field }
     }
 
-    pub(crate) fn build_call(
-        &self,
-        context: &Context,
-        builder: &Builder<'ctx>,
-        object_functions: &ObjectFunctions<'ctx>,
-    ) {
+    pub(crate) fn build_call(&self, builder: &Builder<'ctx>, context: ClassCompilerContext) {
         // TODO we have to assert here that the field is of the correct type
         let function_pointer_pointer = builder
             .build_struct_gep(
-                object_functions.fields_type,
+                context.object_functions.fields_type,
                 self.field,
                 1,
                 "function_pointer",
@@ -59,7 +54,7 @@ impl<'ctx> Field<'ctx> {
 
         let function_pointer = builder
             .build_load(
-                context.ptr_type(*ADDRESS_SPACE),
+                context.context.ptr_type(*ADDRESS_SPACE),
                 function_pointer_pointer,
                 "deref_function",
             )
@@ -69,7 +64,7 @@ impl<'ctx> Field<'ctx> {
         // TODO handle the return value
         builder
             .build_indirect_call(
-                context.void_type().fn_type(&[], false),
+                context.context.void_type().fn_type(&[], false),
                 function_pointer.into_pointer_value(),
                 &[],
                 "call_result",
@@ -204,7 +199,7 @@ impl<'ctx> ObjectFunctions<'ctx> {
         &self,
         descriptor: PointerValue<'ctx>,
         field_index: usize,
-        context: &'ctx Context,
+        context: ClassCompilerContext<'ctx, '_, '_>,
         builder: &Builder<'ctx>,
     ) -> Field<'ctx> {
         // TODO verify that the field_index is in bounds
@@ -217,7 +212,10 @@ impl<'ctx> ObjectFunctions<'ctx> {
                 .build_gep(
                     self.fields_type,
                     gep,
-                    &[context.i64_type().const_int(field_index as u64, false)],
+                    &[context
+                        .context
+                        .i64_type()
+                        .const_int(field_index as u64, false)],
                     "field",
                 )
                 .unwrap()

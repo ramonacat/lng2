@@ -31,33 +31,29 @@ struct ClassCompiler<'class> {
     class: &'class Class<ClassType, FunctionType>,
 }
 
+#[derive(Clone, Copy)]
+pub struct ClassCompilerContext<'ctx, 'a, 'class> {
+    pub context: &'ctx Context,
+    pub module: &'a Module<'ctx>,
+    pub object_functions: &'a ObjectFunctions<'ctx>,
+    pub class_declarations: &'a HashMap<Identifier, ClassDeclaration<'ctx, 'class>>,
+}
+
 impl<'ctx, 'class> ClassCompiler<'class> {
     const fn new(class: &'class Class<ClassType, FunctionType>) -> Self {
         Self { class }
     }
 
-    fn compile_class(
-        &mut self,
-        // TODO should there be some kinda CompilationContext or whatever that encapsulates all
-        // these arguments?
-        context: &'ctx Context,
-        module: &Module<'ctx>,
-        object_functions: &ObjectFunctions<'ctx>,
-        class_declarations: &HashMap<Identifier, ClassDeclaration<'ctx, 'class>>,
-    ) {
-        let class = class_declarations.get(&self.class.name).unwrap();
+    fn compile_class(&mut self, compiler_context: ClassCompilerContext<'ctx, '_, 'class>) {
+        let class = compiler_context
+            .class_declarations
+            .get(&self.class.name)
+            .unwrap();
 
         for function in &self.class.functions {
             let function_value = class.methods.get(&function.prototype.name).unwrap();
 
-            self.compile_function(
-                *function_value,
-                function,
-                context,
-                module,
-                object_functions,
-                class_declarations,
-            );
+            self.compile_function(*function_value, function, compiler_context);
         }
     }
 
@@ -65,27 +61,18 @@ impl<'ctx, 'class> ClassCompiler<'class> {
         &mut self,
         function_value: FunctionValue<'ctx>,
         function: &Function<FunctionType>,
-        context: &'ctx Context,
-        module: &Module<'ctx>,
-        object_functions: &ObjectFunctions<'ctx>,
-        class_declarations: &HashMap<Identifier, ClassDeclaration<'ctx, 'class>>,
+        context: ClassCompilerContext<'ctx, '_, 'class>,
     ) -> FunctionValue<'ctx> {
         match function.type_.as_kind() {
             function::FunctionTypeKind::Statements(statements) => {
-                let builder = context.create_builder();
-                let entry_block = context.append_basic_block(function_value, "entry");
+                let builder = context.context.create_builder();
+                let entry_block = context.context.append_basic_block(function_value, "entry");
                 builder.position_at_end(entry_block);
 
                 for statement in statements {
                     match statement {
                         ast::Statement::Expression(expression) => {
-                            self.compile_expression(
-                                expression,
-                                context,
-                                &builder,
-                                object_functions,
-                                class_declarations,
-                            );
+                            self.compile_expression(expression, &builder, context);
                         }
                     }
                 }
@@ -97,20 +84,21 @@ impl<'ctx, 'class> ClassCompiler<'class> {
                 function_value
             }
             function::FunctionTypeKind::External(external_name) => {
-                let external = module.add_function(
+                let external = context.module.add_function(
                     external_name,
                     // TODO actually set the correct type here
-                    context.void_type().fn_type(&[], false),
+                    context.context.void_type().fn_type(&[], false),
                     None,
                 );
-                let trampoline = *class_declarations
+                let trampoline = *context
+                    .class_declarations
                     .get(&self.class.name)
                     .unwrap()
                     .methods
                     .get(&function.prototype.name)
                     .unwrap();
-                let builder = context.create_builder();
-                let entry_block = context.append_basic_block(trampoline, "entry");
+                let builder = context.context.create_builder();
+                let entry_block = context.context.append_basic_block(trampoline, "entry");
                 builder.position_at_end(entry_block);
 
                 builder.build_call(external, &[], "external_call").unwrap();
@@ -125,45 +113,31 @@ impl<'ctx, 'class> ClassCompiler<'class> {
     fn compile_expression(
         &mut self,
         expression: &Expression<ExpressionType>,
-        context: &'ctx Context,
         builder: &Builder<'ctx>,
-        object_functions: &ObjectFunctions<'ctx>,
-        class_declarations: &HashMap<Identifier, ClassDeclaration<'ctx, 'class>>,
+        context: ClassCompilerContext<'ctx, '_, 'class>,
     ) -> Value<'ctx, 'class> {
         match &expression.kind {
             ast::ExpressionKind::Call(expression) => {
                 // TODO differentiate between static and non-static methods
-                let expression = self.compile_expression(
-                    expression,
-                    context,
-                    builder,
-                    object_functions,
-                    class_declarations,
-                );
+                let expression = self.compile_expression(expression, builder, context);
 
                 let Value::Field(field) = expression else {
                     todo!();
                 };
 
-                field.build_call(context, builder, object_functions);
+                field.build_call(builder, context);
 
                 Value::None
             }
             ast::ExpressionKind::VariableAccess(identifier) => {
-                Value::Class(class_declarations.get(identifier).unwrap().clone())
+                Value::Class(context.class_declarations.get(identifier).unwrap().clone())
             }
             ast::ExpressionKind::FieldAccess(target, field) => {
-                let Value::Class(class) = self.compile_expression(
-                    target,
-                    context,
-                    builder,
-                    object_functions,
-                    class_declarations,
-                ) else {
+                let Value::Class(class) = self.compile_expression(target, builder, context) else {
                     todo!();
                 };
 
-                class.field_access(*field, object_functions, context, builder)
+                class.field_access(*field, builder, context)
             }
         }
     }
@@ -253,15 +227,14 @@ impl<'ctx, 'class> ClassDeclaration<'ctx, 'class> {
     fn field_access(
         &self,
         field: Identifier,
-        object_functions: &ObjectFunctions<'ctx>,
-        context: &'ctx Context,
         builder: &Builder<'ctx>,
+        compiler_context: ClassCompilerContext<'ctx, '_, 'class>,
     ) -> Value<'ctx, 'class> {
         let index = self.field_indices.get(&field).unwrap();
-        let field = object_functions.get_field(
+        let field = compiler_context.object_functions.get_field(
             self.descriptor,
             usize::try_from(*index).unwrap(),
-            context,
+            compiler_context,
             builder,
         );
 
@@ -327,12 +300,16 @@ impl<'ctx> ModuleGenerator<'ctx> {
                     }
                 }
 
-                classes.0.get_mut(&id.unwrap()).unwrap().compile_class(
-                    context,
-                    module,
-                    &self.object_functions,
-                    &class_declarations,
-                );
+                classes
+                    .0
+                    .get_mut(&id.unwrap())
+                    .unwrap()
+                    .compile_class(ClassCompilerContext {
+                        context,
+                        module,
+                        object_functions: &self.object_functions,
+                        class_declarations: &class_declarations,
+                    });
             });
 
         println!("{:?}", &self.module_compiler);
