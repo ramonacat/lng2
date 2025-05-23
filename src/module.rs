@@ -8,7 +8,7 @@ use inkwell::{
     values::{BasicValue, PointerValue},
 };
 
-use crate::ADDRESS_SPACE;
+use crate::{ADDRESS_SPACE, stdlib};
 
 pub struct GlobalConstructor<'ctx> {
     priority: u32,
@@ -194,21 +194,12 @@ impl<'ctx> ModuleCompiler<'ctx> {
             .create_jit_execution_engine(inkwell::OptimizationLevel::Default)
             .unwrap();
 
-        // TODO this is a hack, we should provide the global mappings elsewhere
-        execution_engine.add_global_mapping(
-            &self.module.get_function("println").unwrap(),
-            printline as usize,
-        );
+        stdlib::register_mappings(&self.module, &execution_engine);
 
         execution_engine.run_static_constructors();
         action(&execution_engine);
         execution_engine.run_static_destructors();
     }
-}
-
-// TODO move this to stdlib
-extern "C" fn printline() {
-    println!("ok");
 }
 
 impl Debug for ModuleCompiler<'_> {

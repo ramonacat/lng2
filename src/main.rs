@@ -5,6 +5,7 @@ mod identifier;
 mod module;
 mod object;
 mod parser;
+mod stdlib;
 mod typecheck;
 mod types;
 
