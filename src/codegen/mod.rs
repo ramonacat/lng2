@@ -145,7 +145,7 @@ impl<'ctx, 'class> ClassCompiler<'class> {
                     todo!();
                 };
 
-                object_functions.call_field(field, context, builder);
+                field.build_call(context, builder, object_functions);
 
                 Value::None
             }
@@ -227,7 +227,7 @@ impl<'ctx, 'class> ClassDeclaration<'ctx, 'class> {
         let mut fields = vec![];
 
         for (index, (name, function)) in methods.iter().enumerate() {
-            fields.push(object::Field {
+            fields.push(object::FieldDeclaration {
                 name: *name,
                 value: Value::Callable(*function),
             });

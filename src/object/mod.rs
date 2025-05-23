@@ -15,18 +15,67 @@ use crate::{
     module::{CompilerServices, ModuleCompiler},
 };
 
-#[derive(Clone)]
+#[derive(Clone)] //TODO can we kill the clone
 pub enum Value<'ctx, 'class> {
     None,
     Callable(FunctionValue<'ctx>),
-    #[allow(unused)]
-    Field(PointerValue<'ctx>),
+    Field(Field<'ctx>),
     Class(ClassDeclaration<'ctx, 'class>),
 }
 
-pub struct Field<'ctx, 'class> {
+pub struct FieldDeclaration<'ctx, 'class> {
     pub name: Identifier,
     pub value: Value<'ctx, 'class>,
+}
+
+#[derive(Clone)] //TODO can we kill the clone
+pub struct Field<'ctx> {
+    // TODO self_ should be in fact a struct that has the object pointer and methods like get_field
+    #[allow(unused)]
+    pub self_: PointerValue<'ctx>,
+    pub field: PointerValue<'ctx>,
+}
+
+impl<'ctx> Field<'ctx> {
+    pub const fn new(self_: PointerValue<'ctx>, field: PointerValue<'ctx>) -> Self {
+        Self { self_, field }
+    }
+
+    pub(crate) fn build_call(
+        &self,
+        context: &Context,
+        builder: &Builder<'ctx>,
+        object_functions: &ObjectFunctions<'ctx>,
+    ) {
+        // TODO we have to assert here that the field is of the correct type
+        let function_pointer_pointer = builder
+            .build_struct_gep(
+                object_functions.fields_type,
+                self.field,
+                1,
+                "function_pointer",
+            )
+            .unwrap();
+
+        let function_pointer = builder
+            .build_load(
+                context.ptr_type(*ADDRESS_SPACE),
+                function_pointer_pointer,
+                "deref_function",
+            )
+            .unwrap();
+
+        // TODO ensure we have the correct function signature here
+        // TODO handle the return value
+        builder
+            .build_indirect_call(
+                context.void_type().fn_type(&[], false),
+                function_pointer.into_pointer_value(),
+                &[],
+                "call_result",
+            )
+            .unwrap();
+    }
 }
 
 pub struct ObjectFunctions<'ctx> {
@@ -38,7 +87,7 @@ impl<'ctx> ObjectFunctions<'ctx> {
     pub(crate) fn declare_class(
         &self,
         name: &str,
-        fields: &[Field],
+        fields: &[FieldDeclaration],
         context: &'ctx Context,
         module: &inkwell::module::Module<'ctx>,
         compiler_services: &mut CompilerServices<'ctx>,
@@ -157,13 +206,13 @@ impl<'ctx> ObjectFunctions<'ctx> {
         field_index: usize,
         context: &'ctx Context,
         builder: &Builder<'ctx>,
-    ) -> PointerValue<'ctx> {
+    ) -> Field<'ctx> {
         // TODO verify that the field_index is in bounds
         let gep = builder
             .build_struct_gep(self.object_type, descriptor, 0, "fields")
             .unwrap();
 
-        unsafe {
+        let field = unsafe {
             builder
                 .build_gep(
                     self.fields_type,
@@ -172,40 +221,9 @@ impl<'ctx> ObjectFunctions<'ctx> {
                     "field",
                 )
                 .unwrap()
-        }
-    }
+        };
 
-    pub(crate) fn call_field(
-        &self,
-        // TODO `field` should be a struct which also has a field for the `self` pointer, and it
-        // should own this method
-        field: PointerValue<'ctx>,
-        context: &Context,
-        builder: &Builder<'ctx>,
-    ) {
-        // TODO we have to assert here that the field is of the correct type
-        let function_pointer_pointer = builder
-            .build_struct_gep(self.fields_type, field, 1, "function_pointer")
-            .unwrap();
-
-        let function_pointer = builder
-            .build_load(
-                context.ptr_type(*ADDRESS_SPACE),
-                function_pointer_pointer,
-                "deref_function",
-            )
-            .unwrap();
-
-        // TODO ensure we have the correct function signature here
-        // TODO handle the return value
-        builder
-            .build_indirect_call(
-                context.void_type().fn_type(&[], false),
-                function_pointer.into_pointer_value(),
-                &[],
-                "call_result",
-            )
-            .unwrap();
+        Field::new(descriptor, field)
     }
 }
 
