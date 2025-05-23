@@ -15,7 +15,6 @@ use crate::{
     module::{CompilerServices, ModuleCompiler},
 };
 
-#[derive(Clone)] //TODO can we kill the clone
 pub enum Value<'ctx, 'class> {
     None,
     Callable(FunctionValue<'ctx>),
@@ -28,7 +27,6 @@ pub struct FieldDeclaration<'ctx, 'class> {
     pub value: Value<'ctx, 'class>,
 }
 
-#[derive(Clone)] //TODO can we kill the clone
 pub struct Field<'ctx> {
     // TODO self_ should be in fact a struct that has the object pointer and methods like get_field
     #[allow(unused)]
