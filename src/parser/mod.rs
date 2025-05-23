@@ -50,7 +50,6 @@ fn pretty_error(contents: &str, error: ParseError<usize, grammar::Token<'_>, &st
             &format!("unrecognized EOF, expected one of: {}", expected.join(", ")),
             (location, location),
         ),
-        // TODO the tokens have ranges, support highlighting them!
         ParseError::UnrecognizedToken { token, expected } => print_with_highlight(
             contents,
             &format!(

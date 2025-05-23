@@ -26,12 +26,86 @@ struct ClassCompiler<'class> {
     class: &'class Class<ClassType, FunctionType>,
 }
 
+pub trait AnyCompilerContext<'ctx, 'a> {
+    fn context(&self) -> &'ctx Context;
+    fn module(&self) -> &'a Module<'ctx>;
+    fn object_functions(&self) -> &'a ObjectFunctions<'ctx>;
+    fn identifiers(&self) -> &'a Identifiers;
+}
+
+#[derive(Clone, Copy)]
+pub struct FunctionCompilerContext<'ctx, 'a, 'class> {
+    pub class: ClassCompilerContext<'ctx, 'a, 'class>,
+    pub function_value: FunctionValue<'ctx>,
+    pub function: &'a Function<FunctionType>,
+}
+
+impl<'ctx, 'a> AnyCompilerContext<'ctx, 'a> for FunctionCompilerContext<'ctx, 'a, '_> {
+    fn context(&self) -> &'ctx Context {
+        self.class.context()
+    }
+
+    fn module(&self) -> &'a Module<'ctx> {
+        self.class.module()
+    }
+
+    fn object_functions(&self) -> &'a ObjectFunctions<'ctx> {
+        self.class.object_functions()
+    }
+
+    fn identifiers(&self) -> &'a Identifiers {
+        self.class.identifiers()
+    }
+}
+
 #[derive(Clone, Copy)]
 pub struct ClassCompilerContext<'ctx, 'a, 'class> {
+    pub compiler: CompilerContext<'ctx, 'a>,
+    pub class_declarations: &'a HashMap<Identifier, ClassDeclaration<'ctx, 'class>>,
+}
+
+impl<'ctx, 'a> AnyCompilerContext<'ctx, 'a> for ClassCompilerContext<'ctx, 'a, '_> {
+    fn context(&self) -> &'ctx Context {
+        self.compiler.context
+    }
+
+    fn module(&self) -> &'a Module<'ctx> {
+        self.compiler.module
+    }
+
+    fn object_functions(&self) -> &'a ObjectFunctions<'ctx> {
+        self.compiler.object_functions
+    }
+
+    fn identifiers(&self) -> &'a Identifiers {
+        self.compiler.identifiers
+    }
+}
+
+#[derive(Clone, Copy)]
+pub struct CompilerContext<'ctx, 'a> {
     pub context: &'ctx Context,
     pub module: &'a Module<'ctx>,
     pub object_functions: &'a ObjectFunctions<'ctx>,
-    pub class_declarations: &'a HashMap<Identifier, ClassDeclaration<'ctx, 'class>>,
+    pub identifiers: &'a Identifiers,
+}
+
+impl<'ctx, 'a> AnyCompilerContext<'ctx, 'a> for CompilerContext<'ctx, 'a> {
+    fn context(&self) -> &'ctx Context {
+        self.context
+    }
+
+    fn module(&self) -> &'a Module<'ctx> {
+        self.module
+    }
+
+    fn object_functions(&self) -> &'a ObjectFunctions<'ctx> {
+        self.object_functions
+    }
+
+    fn identifiers(&self) -> &'a Identifiers {
+        self.identifiers
+    }
 }
 
 impl<'ctx, 'class> ClassCompiler<'class>
@@ -51,23 +125,29 @@ where
         for function in &self.class.functions {
             let function_value = class.methods.get(&function.prototype.name).unwrap();
 
-            self.compile_function(*function_value, function, compiler_context);
+            let function_compiler_context = FunctionCompilerContext {
+                class: compiler_context,
+                function_value: *function_value,
+                function,
+            };
+
+            self.compile_function(function_compiler_context);
         }
     }
 
     fn compile_function(
         &mut self,
-        function_value: FunctionValue<'ctx>,
-        function: &Function<FunctionType>,
-        context: ClassCompilerContext<'ctx, 'class, 'class>,
+        context: FunctionCompilerContext<'ctx, 'class, 'class>,
     ) -> FunctionValue<'ctx>
     where
         'ctx: 'class,
     {
-        match function.type_.as_kind() {
+        match context.function.type_.as_kind() {
             function::FunctionTypeKind::Statements(statements) => {
-                let builder = context.context.create_builder();
-                let entry_block = context.context.append_basic_block(function_value, "entry");
+                let builder = context.context().create_builder();
+                let entry_block = context
+                    .context()
+                    .append_basic_block(context.function_value, "entry");
                 builder.position_at_end(entry_block);
 
                 for statement in statements {
@@ -82,24 +162,25 @@ where
                 // that this we always have one (or never have one if the type is void)
                 builder.build_return(None).unwrap();
 
-                function_value
+                context.function_value
             }
             function::FunctionTypeKind::External(external_name) => {
-                let external = context.module.add_function(
+                let external = context.module().add_function(
                     external_name,
                     // TODO actually set the correct type here
-                    context.context.void_type().fn_type(&[], false),
+                    context.context().void_type().fn_type(&[], false),
                     None,
                 );
                 let trampoline = *context
+                    .class
                     .class_declarations
                     .get(&self.class.name)
                     .unwrap()
                     .methods
-                    .get(&function.prototype.name)
+                    .get(&context.function.prototype.name)
                     .unwrap();
-                let builder = context.context.create_builder();
-                let entry_block = context.context.append_basic_block(trampoline, "entry");
+                let builder = context.context().create_builder();
+                let entry_block = context.context().append_basic_block(trampoline, "entry");
                 builder.position_at_end(entry_block);
 
                 builder.build_call(external, &[], "external_call").unwrap();
@@ -115,7 +196,7 @@ where
         &mut self,
         expression: &Expression<ExpressionType>,
         builder: &Builder<'ctx>,
-        context: ClassCompilerContext<'ctx, 'class, 'class>,
+        context: FunctionCompilerContext<'ctx, 'class, 'class>,
     ) -> Value<'ctx, 'class> {
         match &expression.kind {
             ast::ExpressionKind::Call(expression) => {
@@ -131,7 +212,7 @@ where
                 Value::None
             }
             ast::ExpressionKind::VariableAccess(identifier) => {
-                Value::Class(context.class_declarations.get(identifier).unwrap())
+                Value::Class(context.class.class_declarations.get(identifier).unwrap())
             }
             ast::ExpressionKind::FieldAccess(target, field) => {
                 let Value::Class(class) = self.compile_expression(target, builder, context) else {
@@ -168,10 +249,7 @@ impl<'ctx, 'class> ClassDeclaration<'ctx, 'class> {
     fn new(
         // TODO pass ClassCompilerContext here as an arg instead of all the things?
         class: &'class Class<ClassType, FunctionType>,
-        context: &'ctx Context,
-        module: &Module<'ctx>,
-        object_functions: &ObjectFunctions<'ctx>,
-        identifiers: &Identifiers,
+        context: CompilerContext<'ctx, '_>,
         compiler_services: &mut CompilerServices<'ctx>,
     ) -> Self {
         let mut field_indices = HashMap::new();
@@ -180,7 +258,7 @@ impl<'ctx, 'class> ClassDeclaration<'ctx, 'class> {
             .functions
             .iter()
             .map(|x| {
-                let resolved_name = identifiers.resolve(x.prototype.name);
+                let resolved_name = context.identifiers().resolve(x.prototype.name);
                 // TODO this is very hacky, we need to add an attribute for the main function, and
                 // typecheck that only one exists in the program and that it has the right
                 // signature
@@ -194,7 +272,11 @@ impl<'ctx, 'class> ClassDeclaration<'ctx, 'class> {
 
                 (
                     x.prototype.name,
-                    module.add_function(name, context.void_type().fn_type(&[], false), None),
+                    context.module().add_function(
+                        name,
+                        context.context().void_type().fn_type(&[], false),
+                        None,
+                    ),
                 )
             })
             .collect::<HashMap<_, _>>();
@@ -209,11 +291,11 @@ impl<'ctx, 'class> ClassDeclaration<'ctx, 'class> {
             field_indices.insert(*name, index as u64);
         }
 
-        let descriptor = object_functions.declare_class(
-            identifiers.resolve(class.name),
+        let descriptor = context.object_functions().declare_class(
+            context.identifiers().resolve(class.name),
             &fields,
-            context,
-            module,
+            context.context(),
+            context.module(),
             compiler_services,
         );
 
@@ -229,7 +311,7 @@ impl<'ctx, 'class> ClassDeclaration<'ctx, 'class> {
         &'class self,
         field: Identifier,
         builder: &Builder<'ctx>,
-        compiler_context: ClassCompilerContext<'ctx, '_, 'class>,
+        compiler_context: FunctionCompilerContext<'ctx, '_, 'class>,
     ) -> Value<'ctx, 'class> {
         let index = self.field_indices.get(&field).unwrap();
         let field =
@@ -266,6 +348,12 @@ impl<'ctx> ModuleGenerator<'ctx> {
     fn generate(mut self, ast: &TypedAst) {
         self.module_compiler
             .build(|context, module, compiler_services| {
+                let compiler_context = CompilerContext {
+                    context,
+                    module,
+                    object_functions: &self.object_functions,
+                    identifiers: self.identifiers,
+                };
                 let mut class_declarations = HashMap::new();
 
                 for declaration in &ast.declarations {
@@ -273,18 +361,16 @@ impl<'ctx> ModuleGenerator<'ctx> {
                         ast::Declaration::Class(class) => {
                             class_declarations.insert(
                                 class.name,
-                                ClassDeclaration::new(
-                                    class,
-                                    context,
-                                    module,
-                                    &self.object_functions,
-                                    self.identifiers,
-                                    compiler_services,
-                                ),
+                                ClassDeclaration::new(class, compiler_context, compiler_services),
                             );
                         }
                     }
                 }
+
+                let compiler_context = ClassCompilerContext {
+                    compiler: compiler_context,
+                    class_declarations: &class_declarations,
+                };
 
                 let mut classes = ClassCompilers::new();
                 let mut id = None;
@@ -297,17 +383,11 @@ impl<'ctx> ModuleGenerator<'ctx> {
                         }
                     }
                 }
-
                 classes
                     .0
                     .get_mut(&id.unwrap())
                     .unwrap()
-                    .compile_class(ClassCompilerContext {
-                        context,
-                        module,
-                        object_functions: &self.object_functions,
-                        class_declarations: &class_declarations,
-                    });
+                    .compile_class(compiler_context);
             });
 
         println!("{:?}", &self.module_compiler);

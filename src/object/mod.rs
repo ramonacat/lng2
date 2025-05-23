@@ -10,7 +10,7 @@ use representation::ObjectFieldKind;
 
 use crate::{
     ADDRESS_SPACE,
-    codegen::{ClassCompilerContext, ClassDeclaration},
+    codegen::{AnyCompilerContext as _, ClassDeclaration, FunctionCompilerContext},
     identifier::Identifier,
     module::{CompilerServices, ModuleCompiler},
 };
@@ -35,13 +35,13 @@ impl<'ctx> Object<'ctx> {
     pub(crate) fn get_field(
         &self,
         field_index: usize,
-        context: ClassCompilerContext<'ctx, '_, '_>,
+        context: FunctionCompilerContext<'ctx, '_, '_>,
         builder: &Builder<'ctx>,
     ) -> Field<'ctx, '_> {
         // TODO verify that the field_index is in bounds
         let gep = builder
             .build_struct_gep(
-                context.object_functions.object_type,
+                context.object_functions().object_type,
                 self.self_,
                 0,
                 "fields",
@@ -51,10 +51,10 @@ impl<'ctx> Object<'ctx> {
         let field = unsafe {
             builder
                 .build_gep(
-                    context.object_functions.fields_type,
+                    context.object_functions().fields_type,
                     gep,
                     &[context
-                        .context
+                        .context()
                         .i64_type()
                         .const_int(field_index as u64, false)],
                     "field",
@@ -77,11 +77,11 @@ impl<'ctx, 'a> Field<'ctx, 'a> {
         Self { self_, field }
     }
 
-    pub(crate) fn build_call(&self, builder: &Builder<'ctx>, context: ClassCompilerContext) {
+    pub(crate) fn build_call(&self, builder: &Builder<'ctx>, context: FunctionCompilerContext) {
         // TODO we have to assert here that the field is of the correct type
         let function_pointer_pointer = builder
             .build_struct_gep(
-                context.object_functions.fields_type,
+                context.object_functions().fields_type,
                 self.field,
                 1,
                 "function_pointer",
@@ -90,7 +90,7 @@ impl<'ctx, 'a> Field<'ctx, 'a> {
 
         let function_pointer = builder
             .build_load(
-                context.context.ptr_type(*ADDRESS_SPACE),
+                context.context().ptr_type(*ADDRESS_SPACE),
                 function_pointer_pointer,
                 "deref_function",
             )
@@ -100,7 +100,7 @@ impl<'ctx, 'a> Field<'ctx, 'a> {
         // TODO handle the return value
         builder
             .build_indirect_call(
-                context.context.void_type().fn_type(&[], false),
+                context.context().void_type().fn_type(&[], false),
                 function_pointer.into_pointer_value(),
                 &[],
                 "call_result",
