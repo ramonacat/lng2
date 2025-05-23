@@ -14,15 +14,15 @@ use crate::{
 };
 
 #[derive(Clone)]
-pub enum Value<'ctx> {
+pub enum Value<'ctx, 'class> {
     None,
     Callable(FunctionValue<'ctx>),
-    Class(ClassDeclaration<'ctx>),
+    Class(ClassDeclaration<'ctx, 'class>),
 }
 
-pub struct Field<'ctx> {
+pub struct Field<'ctx, 'class> {
     pub name: Identifier,
-    pub value: Value<'ctx>,
+    pub value: Value<'ctx, 'class>,
 }
 
 pub struct ObjectFunctions<'ctx> {

@@ -37,8 +37,8 @@ impl FunctionType {
         self.id
     }
 
-    pub(crate) fn into_kind(self) -> FunctionTypeKind {
-        self.kind
+    pub(crate) const fn as_kind(&self) -> &FunctionTypeKind {
+        &self.kind
     }
 }
 

@@ -20,38 +20,33 @@ use crate::{
     },
 };
 
-pub fn codegen(ast: TypedAst, identifiers: &Identifiers) {
+pub fn codegen(ast: &TypedAst, identifiers: &Identifiers) {
     let context = Context::create();
     let module_generator = ModuleGenerator::new(&context, identifiers);
 
     module_generator.generate(ast);
 }
 
-struct ClassCompiler {
-    class: Class<ClassType, FunctionType>,
+struct ClassCompiler<'class> {
+    class: &'class Class<ClassType, FunctionType>,
 }
 
-impl<'ctx> ClassCompiler {
-    const fn new(class: Class<ClassType, FunctionType>) -> Self {
+impl<'ctx, 'class> ClassCompiler<'class> {
+    const fn new(class: &'class Class<ClassType, FunctionType>) -> Self {
         Self { class }
     }
 
-    fn compile_class<'a>(
+    fn compile_class(
         &mut self,
         // TODO should there be some kinda CompilationContext or whatever that encapsulates all
         // these arguments?
         context: &'ctx Context,
         module: &Module<'ctx>,
-        class_declarations: &HashMap<Identifier, ClassDeclaration<'ctx>>,
-    ) where
-        'a: 'ctx,
-    {
+        class_declarations: &HashMap<Identifier, ClassDeclaration<'ctx, 'class>>,
+    ) {
         let class = class_declarations.get(&self.class.name).unwrap();
-        let mut functions = vec![];
-        // TODO get rid of this swap, we might need self.class.functions later (e.g. for calls)
-        std::mem::swap(&mut functions, &mut self.class.functions);
 
-        for function in functions {
+        for function in &self.class.functions {
             let function_value = class.methods.get(&function.prototype.name).unwrap();
 
             self.compile_function(
@@ -64,19 +59,15 @@ impl<'ctx> ClassCompiler {
         }
     }
 
-    // TODO is 'classes needed for anything really?
-    fn compile_function<'classes>(
+    fn compile_function(
         &mut self,
         function_value: FunctionValue<'ctx>,
-        function: Function<FunctionType>,
+        function: &Function<FunctionType>,
         context: &'ctx Context,
         module: &Module<'ctx>,
-        class_declarations: &HashMap<Identifier, ClassDeclaration<'ctx>>,
-    ) -> FunctionValue<'ctx>
-    where
-        'classes: 'ctx,
-    {
-        match function.type_.into_kind() {
+        class_declarations: &HashMap<Identifier, ClassDeclaration<'ctx, 'class>>,
+    ) -> FunctionValue<'ctx> {
+        match function.type_.as_kind() {
             function::FunctionTypeKind::Statements(statements) => {
                 let builder = context.create_builder();
                 let entry_block = context.append_basic_block(function_value, "entry");
@@ -98,7 +89,7 @@ impl<'ctx> ClassCompiler {
             }
             function::FunctionTypeKind::External(external_name) => {
                 let external = module.add_function(
-                    &external_name,
+                    external_name,
                     // TODO actually set the correct type here
                     context.void_type().fn_type(&[], false),
                     None,
@@ -124,14 +115,14 @@ impl<'ctx> ClassCompiler {
     #[allow(clippy::only_used_in_recursion)]
     fn compile_expression(
         &mut self,
-        expression: Expression<ExpressionType>,
+        expression: &Expression<ExpressionType>,
         builder: &Builder<'ctx>,
-        class_declarations: &HashMap<Identifier, ClassDeclaration<'ctx>>,
-    ) -> Value<'ctx> {
-        match expression.kind {
+        class_declarations: &HashMap<Identifier, ClassDeclaration<'ctx, 'class>>,
+    ) -> Value<'ctx, 'class> {
+        match &expression.kind {
             ast::ExpressionKind::Call(expression) => {
                 // TODO differentiate between static and non-static methods
-                let expression = self.compile_expression(*expression, builder, class_declarations);
+                let expression = self.compile_expression(expression, builder, class_declarations);
 
                 let Value::Callable(function_value) = expression else {
                     todo!();
@@ -145,11 +136,11 @@ impl<'ctx> ClassCompiler {
                 Value::None
             }
             ast::ExpressionKind::VariableAccess(identifier) => {
-                Value::Class(class_declarations.get(&identifier).unwrap().clone())
+                Value::Class(class_declarations.get(identifier).unwrap().clone())
             }
             ast::ExpressionKind::FieldAccess(target, field) => {
                 let Value::Class(class) =
-                    self.compile_expression(*target, builder, class_declarations)
+                    self.compile_expression(target, builder, class_declarations)
                 else {
                     todo!();
                 };
@@ -157,7 +148,7 @@ impl<'ctx> ClassCompiler {
                 // TODO This should in reality codegen code that takes the declaration and looks
                 // for the specific field, and on this side of the JIT we shouldn't really know or
                 // care what the field values are
-                let function = class.methods.get(&field).unwrap();
+                let function = class.methods.get(field).unwrap();
 
                 Value::Callable(*function)
             }
@@ -165,28 +156,31 @@ impl<'ctx> ClassCompiler {
     }
 }
 
-struct ClassCompilers(HashMap<Identifier, ClassCompiler>);
+struct ClassCompilers<'class>(HashMap<Identifier, ClassCompiler<'class>>);
 
-impl ClassCompilers {
+impl<'class> ClassCompilers<'class> {
     fn new() -> Self {
         Self(HashMap::new())
     }
 
-    fn add(&mut self, class: Class<ClassType, FunctionType>) {
+    fn add(&mut self, class: &'class Class<ClassType, FunctionType>) {
         self.0.insert(class.name, ClassCompiler::new(class));
     }
 }
 
 #[derive(Clone)]
-pub struct ClassDeclaration<'ctx> {
+pub struct ClassDeclaration<'ctx, 'class> {
     #[allow(unused)]
     descriptor: PointerValue<'ctx>,
     methods: HashMap<Identifier, FunctionValue<'ctx>>,
+    // TODO use class&descriptor for finding methods to call
+    #[allow(unused)]
+    class: &'class Class<ClassType, FunctionType>,
 }
 
-impl<'ctx> ClassDeclaration<'ctx> {
+impl<'ctx, 'class> ClassDeclaration<'ctx, 'class> {
     fn new(
-        class: &Class<ClassType, FunctionType>,
+        class: &'class Class<ClassType, FunctionType>,
         context: &'ctx Context,
         module: &Module<'ctx>,
         object_functions: &ObjectFunctions<'ctx>,
@@ -233,6 +227,7 @@ impl<'ctx> ClassDeclaration<'ctx> {
         );
 
         Self {
+            class,
             descriptor: descriptor.as_pointer_value(),
             methods,
         }
@@ -262,7 +257,7 @@ impl<'ctx> ModuleGenerator<'ctx> {
     }
 
     // TODO this should really return a CompiledModule that we got from ModuleCompiler
-    fn generate(mut self, ast: TypedAst) {
+    fn generate(mut self, ast: &TypedAst) {
         self.module_compiler
             .build(|context, module, compiler_services| {
                 let mut class_declarations = HashMap::new();
@@ -288,7 +283,7 @@ impl<'ctx> ModuleGenerator<'ctx> {
                 let mut classes = ClassCompilers::new();
                 let mut id = None;
 
-                for declaration in ast.declarations {
+                for declaration in &ast.declarations {
                     match declaration {
                         ast::Declaration::Class(class) => {
                             id = Some(class.name);

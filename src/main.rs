@@ -49,5 +49,5 @@ fn main() {
         pretty_print(&checked_ast, &identifiers).expect("Failed to pretty print typed AST")
     );
 
-    codegen(checked_ast, &identifiers);
+    codegen(&checked_ast, &identifiers);
 }
