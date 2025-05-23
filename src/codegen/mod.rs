@@ -42,6 +42,7 @@ impl<'ctx, 'class> ClassCompiler<'class> {
         // these arguments?
         context: &'ctx Context,
         module: &Module<'ctx>,
+        object_functions: &ObjectFunctions<'ctx>,
         class_declarations: &HashMap<Identifier, ClassDeclaration<'ctx, 'class>>,
     ) {
         let class = class_declarations.get(&self.class.name).unwrap();
@@ -54,6 +55,7 @@ impl<'ctx, 'class> ClassCompiler<'class> {
                 function,
                 context,
                 module,
+                object_functions,
                 class_declarations,
             );
         }
@@ -65,6 +67,7 @@ impl<'ctx, 'class> ClassCompiler<'class> {
         function: &Function<FunctionType>,
         context: &'ctx Context,
         module: &Module<'ctx>,
+        object_functions: &ObjectFunctions<'ctx>,
         class_declarations: &HashMap<Identifier, ClassDeclaration<'ctx, 'class>>,
     ) -> FunctionValue<'ctx> {
         match function.type_.as_kind() {
@@ -76,7 +79,13 @@ impl<'ctx, 'class> ClassCompiler<'class> {
                 for statement in statements {
                     match statement {
                         ast::Statement::Expression(expression) => {
-                            self.compile_expression(expression, &builder, class_declarations);
+                            self.compile_expression(
+                                expression,
+                                context,
+                                &builder,
+                                object_functions,
+                                class_declarations,
+                            );
                         }
                     }
                 }
@@ -116,22 +125,27 @@ impl<'ctx, 'class> ClassCompiler<'class> {
     fn compile_expression(
         &mut self,
         expression: &Expression<ExpressionType>,
+        context: &'ctx Context,
         builder: &Builder<'ctx>,
+        object_functions: &ObjectFunctions<'ctx>,
         class_declarations: &HashMap<Identifier, ClassDeclaration<'ctx, 'class>>,
     ) -> Value<'ctx, 'class> {
         match &expression.kind {
             ast::ExpressionKind::Call(expression) => {
                 // TODO differentiate between static and non-static methods
-                let expression = self.compile_expression(expression, builder, class_declarations);
+                let expression = self.compile_expression(
+                    expression,
+                    context,
+                    builder,
+                    object_functions,
+                    class_declarations,
+                );
 
-                let Value::Callable(function_value) = expression else {
+                let Value::Field(field) = expression else {
                     todo!();
                 };
 
-                // TODO support signatures other than fn() -> void
-                builder
-                    .build_direct_call(function_value, &[], "call")
-                    .unwrap();
+                object_functions.call_field(field, context, builder);
 
                 Value::None
             }
@@ -139,18 +153,17 @@ impl<'ctx, 'class> ClassCompiler<'class> {
                 Value::Class(class_declarations.get(identifier).unwrap().clone())
             }
             ast::ExpressionKind::FieldAccess(target, field) => {
-                let Value::Class(class) =
-                    self.compile_expression(target, builder, class_declarations)
-                else {
+                let Value::Class(class) = self.compile_expression(
+                    target,
+                    context,
+                    builder,
+                    object_functions,
+                    class_declarations,
+                ) else {
                     todo!();
                 };
 
-                // TODO This should in reality codegen code that takes the declaration and looks
-                // for the specific field, and on this side of the JIT we shouldn't really know or
-                // care what the field values are
-                let function = class.methods.get(field).unwrap();
-
-                Value::Callable(*function)
+                class.field_access(*field, object_functions, context, builder)
             }
         }
     }
@@ -170,10 +183,9 @@ impl<'class> ClassCompilers<'class> {
 
 #[derive(Clone)]
 pub struct ClassDeclaration<'ctx, 'class> {
-    #[allow(unused)]
     descriptor: PointerValue<'ctx>,
     methods: HashMap<Identifier, FunctionValue<'ctx>>,
-    // TODO use class&descriptor for finding methods to call
+    field_indices: HashMap<Identifier, u64>,
     #[allow(unused)]
     class: &'class Class<ClassType, FunctionType>,
 }
@@ -187,6 +199,8 @@ impl<'ctx, 'class> ClassDeclaration<'ctx, 'class> {
         identifiers: &Identifiers,
         compiler_services: &mut CompilerServices<'ctx>,
     ) -> Self {
+        let mut field_indices = HashMap::new();
+
         let methods = class
             .functions
             .iter()
@@ -210,13 +224,15 @@ impl<'ctx, 'class> ClassDeclaration<'ctx, 'class> {
             })
             .collect::<HashMap<_, _>>();
 
-        let fields = methods
-            .iter()
-            .map(|x| object::Field {
-                name: *x.0,
-                value: Value::Callable(*x.1),
-            })
-            .collect::<Vec<_>>();
+        let mut fields = vec![];
+
+        for (index, (name, function)) in methods.iter().enumerate() {
+            fields.push(object::Field {
+                name: *name,
+                value: Value::Callable(*function),
+            });
+            field_indices.insert(*name, index as u64);
+        }
 
         let descriptor = object_functions.declare_class(
             identifiers.resolve(class.name),
@@ -229,8 +245,27 @@ impl<'ctx, 'class> ClassDeclaration<'ctx, 'class> {
         Self {
             class,
             descriptor: descriptor.as_pointer_value(),
+            field_indices,
             methods,
         }
+    }
+
+    fn field_access(
+        &self,
+        field: Identifier,
+        object_functions: &ObjectFunctions<'ctx>,
+        context: &'ctx Context,
+        builder: &Builder<'ctx>,
+    ) -> Value<'ctx, 'class> {
+        let index = self.field_indices.get(&field).unwrap();
+        let field = object_functions.get_field(
+            self.descriptor,
+            usize::try_from(*index).unwrap(),
+            context,
+            builder,
+        );
+
+        Value::Field(field)
     }
 }
 
@@ -295,6 +330,7 @@ impl<'ctx> ModuleGenerator<'ctx> {
                 classes.0.get_mut(&id.unwrap()).unwrap().compile_class(
                     context,
                     module,
+                    &self.object_functions,
                     &class_declarations,
                 );
             });

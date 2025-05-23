@@ -1,8 +1,10 @@
 mod representation;
 
 use inkwell::{
+    builder::Builder,
+    context::Context,
     types::BasicType,
-    values::{BasicValue, FunctionValue, GlobalValue},
+    values::{BasicValue, FunctionValue, GlobalValue, PointerValue},
 };
 use representation::ObjectFieldKind;
 
@@ -17,6 +19,8 @@ use crate::{
 pub enum Value<'ctx, 'class> {
     None,
     Callable(FunctionValue<'ctx>),
+    #[allow(unused)]
+    Field(PointerValue<'ctx>),
     Class(ClassDeclaration<'ctx, 'class>),
 }
 
@@ -27,6 +31,7 @@ pub struct Field<'ctx, 'class> {
 
 pub struct ObjectFunctions<'ctx> {
     object_type: inkwell::types::StructType<'ctx>,
+    fields_type: inkwell::types::StructType<'ctx>,
 }
 
 impl<'ctx> ObjectFunctions<'ctx> {
@@ -34,7 +39,7 @@ impl<'ctx> ObjectFunctions<'ctx> {
         &self,
         name: &str,
         fields: &[Field],
-        context: &'ctx inkwell::context::Context,
+        context: &'ctx Context,
         module: &inkwell::module::Module<'ctx>,
         compiler_services: &mut CompilerServices<'ctx>,
     ) -> GlobalValue<'ctx> {
@@ -58,17 +63,6 @@ impl<'ctx> ObjectFunctions<'ctx> {
                     .as_basic_value_enum(),
             ]),
         );
-        let fields_type = context.struct_type(
-            &[
-                // name (u64, interned identifier)
-                context.i64_type().as_basic_type_enum(),
-                // value (union of (u64, *mut Object, fn())
-                context.i64_type().as_basic_type_enum(),
-                // value_kind
-                context.i8_type().as_basic_type_enum(),
-            ],
-            false,
-        );
 
         let constructor = module.add_function(
             &format!("class_constructor_{name}"),
@@ -83,13 +77,14 @@ impl<'ctx> ObjectFunctions<'ctx> {
             .build_struct_gep(self.object_type, global.as_pointer_value(), 0, "fields_ptr")
             .unwrap();
         let fields_len = u32::try_from(fields.len()).unwrap();
-        let fields_value = module.add_global(fields_type.array_type(fields_len), None, "fields");
-        fields_value.set_initializer(&fields_type.array_type(fields_len).const_zero());
+        let fields_value =
+            module.add_global(self.fields_type.array_type(fields_len), None, "fields");
+        fields_value.set_initializer(&self.fields_type.array_type(fields_len).const_zero());
 
         for (index, field) in fields.iter().enumerate() {
             let name_ptr = unsafe {
                 fields_field.const_gep(
-                    fields_type,
+                    self.fields_type,
                     &[
                         context.i64_type().const_int(index as u64, false),
                         context.i64_type().const_int(0, false),
@@ -110,11 +105,12 @@ impl<'ctx> ObjectFunctions<'ctx> {
                 Value::Callable(function_value) => (function_value, ObjectFieldKind::Callable),
                 Value::None => todo!(),
                 Value::Class(_) => todo!(),
+                Value::Field(_) => todo!(),
             };
 
             let value_ptr = unsafe {
                 fields_field.const_gep(
-                    fields_type,
+                    self.fields_type,
                     &[
                         context.i64_type().const_int(index as u64, false),
                         context.i64_type().const_int(1, false),
@@ -128,7 +124,7 @@ impl<'ctx> ObjectFunctions<'ctx> {
 
             let value_kind_ptr = unsafe {
                 fields_field.const_gep(
-                    fields_type,
+                    self.fields_type,
                     &[
                         context.i64_type().const_int(index as u64, false),
                         context.i64_type().const_int(2, false),
@@ -154,6 +150,63 @@ impl<'ctx> ObjectFunctions<'ctx> {
 
         global
     }
+
+    pub(crate) fn get_field(
+        &self,
+        descriptor: PointerValue<'ctx>,
+        field_index: usize,
+        context: &'ctx Context,
+        builder: &Builder<'ctx>,
+    ) -> PointerValue<'ctx> {
+        // TODO verify that the field_index is in bounds
+        let gep = builder
+            .build_struct_gep(self.object_type, descriptor, 0, "fields")
+            .unwrap();
+
+        unsafe {
+            builder
+                .build_gep(
+                    self.fields_type,
+                    gep,
+                    &[context.i64_type().const_int(field_index as u64, false)],
+                    "field",
+                )
+                .unwrap()
+        }
+    }
+
+    pub(crate) fn call_field(
+        &self,
+        // TODO `field` should be a struct which also has a field for the `self` pointer, and it
+        // should own this method
+        field: PointerValue<'ctx>,
+        context: &Context,
+        builder: &Builder<'ctx>,
+    ) {
+        // TODO we have to assert here that the field is of the correct type
+        let function_pointer_pointer = builder
+            .build_struct_gep(self.fields_type, field, 1, "function_pointer")
+            .unwrap();
+
+        let function_pointer = builder
+            .build_load(
+                context.ptr_type(*ADDRESS_SPACE),
+                function_pointer_pointer,
+                "deref_function",
+            )
+            .unwrap();
+
+        // TODO ensure we have the correct function signature here
+        // TODO handle the return value
+        builder
+            .build_indirect_call(
+                context.void_type().fn_type(&[], false),
+                function_pointer.into_pointer_value(),
+                &[],
+                "call_result",
+            )
+            .unwrap();
+    }
 }
 
 pub fn generate_object_functions<'ctx>(
@@ -176,8 +229,23 @@ pub fn generate_object_functions<'ctx>(
             ],
             false,
         );
+        let fields_type = context.opaque_struct_type("object_field");
+        fields_type.set_body(
+            &[
+                // name (u64, interned identifier)
+                context.i64_type().as_basic_type_enum(),
+                // value (union of (u64, *mut Object, fn())
+                context.i64_type().as_basic_type_enum(),
+                // value_kind
+                context.i8_type().as_basic_type_enum(),
+            ],
+            false,
+        );
 
         // TODO run the constructor for the object
-        ObjectFunctions { object_type }
+        ObjectFunctions {
+            object_type,
+            fields_type,
+        }
     })
 }
