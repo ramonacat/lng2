@@ -1,17 +1,12 @@
 use std::collections::HashMap;
 
-use inkwell::{
-    builder::Builder,
-    context::Context,
-    module::Module,
-    values::{FunctionValue, PointerValue},
-};
+use inkwell::{builder::Builder, context::Context, module::Module, values::FunctionValue};
 
 use crate::{
     ast::{self, Class, Expression, Function},
     identifier::{Identifier, Identifiers},
     module::{CompilerServices, ModuleCompiler},
-    object::{self, ObjectFunctions, Value},
+    object::{self, Object, ObjectFunctions, Value},
     types::{
         TypedAst,
         class::ClassType,
@@ -39,12 +34,15 @@ pub struct ClassCompilerContext<'ctx, 'a, 'class> {
     pub class_declarations: &'a HashMap<Identifier, ClassDeclaration<'ctx, 'class>>,
 }
 
-impl<'ctx, 'class> ClassCompiler<'class> {
+impl<'ctx, 'class> ClassCompiler<'class>
+where
+    'ctx: 'class,
+{
     const fn new(class: &'class Class<ClassType, FunctionType>) -> Self {
         Self { class }
     }
 
-    fn compile_class(&mut self, compiler_context: ClassCompilerContext<'ctx, '_, 'class>) {
+    fn compile_class(&mut self, compiler_context: ClassCompilerContext<'ctx, 'class, 'class>) {
         let class = compiler_context
             .class_declarations
             .get(&self.class.name)
@@ -61,8 +59,11 @@ impl<'ctx, 'class> ClassCompiler<'class> {
         &mut self,
         function_value: FunctionValue<'ctx>,
         function: &Function<FunctionType>,
-        context: ClassCompilerContext<'ctx, '_, 'class>,
-    ) -> FunctionValue<'ctx> {
+        context: ClassCompilerContext<'ctx, 'class, 'class>,
+    ) -> FunctionValue<'ctx>
+    where
+        'ctx: 'class,
+    {
         match function.type_.as_kind() {
             function::FunctionTypeKind::Statements(statements) => {
                 let builder = context.context.create_builder();
@@ -114,7 +115,7 @@ impl<'ctx, 'class> ClassCompiler<'class> {
         &mut self,
         expression: &Expression<ExpressionType>,
         builder: &Builder<'ctx>,
-        context: ClassCompilerContext<'ctx, '_, 'class>,
+        context: ClassCompilerContext<'ctx, 'class, 'class>,
     ) -> Value<'ctx, 'class> {
         match &expression.kind {
             ast::ExpressionKind::Call(expression) => {
@@ -130,7 +131,7 @@ impl<'ctx, 'class> ClassCompiler<'class> {
                 Value::None
             }
             ast::ExpressionKind::VariableAccess(identifier) => {
-                Value::Class(context.class_declarations.get(identifier).unwrap().clone())
+                Value::Class(context.class_declarations.get(identifier).unwrap())
             }
             ast::ExpressionKind::FieldAccess(target, field) => {
                 let Value::Class(class) = self.compile_expression(target, builder, context) else {
@@ -155,9 +156,8 @@ impl<'class> ClassCompilers<'class> {
     }
 }
 
-#[derive(Clone)]
 pub struct ClassDeclaration<'ctx, 'class> {
-    descriptor: PointerValue<'ctx>,
+    descriptor: Object<'ctx>,
     methods: HashMap<Identifier, FunctionValue<'ctx>>,
     field_indices: HashMap<Identifier, u64>,
     #[allow(unused)]
@@ -166,6 +166,7 @@ pub struct ClassDeclaration<'ctx, 'class> {
 
 impl<'ctx, 'class> ClassDeclaration<'ctx, 'class> {
     fn new(
+        // TODO pass ClassCompilerContext here as an arg instead of all the things?
         class: &'class Class<ClassType, FunctionType>,
         context: &'ctx Context,
         module: &Module<'ctx>,
@@ -217,26 +218,23 @@ impl<'ctx, 'class> ClassDeclaration<'ctx, 'class> {
         );
 
         Self {
-            class,
-            descriptor: descriptor.as_pointer_value(),
-            field_indices,
+            descriptor,
             methods,
+            field_indices,
+            class,
         }
     }
 
     fn field_access(
-        &self,
+        &'class self,
         field: Identifier,
         builder: &Builder<'ctx>,
         compiler_context: ClassCompilerContext<'ctx, '_, 'class>,
     ) -> Value<'ctx, 'class> {
         let index = self.field_indices.get(&field).unwrap();
-        let field = compiler_context.object_functions.get_field(
-            self.descriptor,
-            usize::try_from(*index).unwrap(),
-            compiler_context,
-            builder,
-        );
+        let field =
+            self.descriptor
+                .get_field(usize::try_from(*index).unwrap(), compiler_context, builder);
 
         Value::Field(field)
     }

@@ -4,7 +4,7 @@ use inkwell::{
     builder::Builder,
     context::Context,
     types::BasicType,
-    values::{BasicValue, FunctionValue, GlobalValue, PointerValue},
+    values::{BasicValue, FunctionValue, PointerValue},
 };
 use representation::ObjectFieldKind;
 
@@ -18,8 +18,8 @@ use crate::{
 pub enum Value<'ctx, 'class> {
     None,
     Callable(FunctionValue<'ctx>),
-    Field(Field<'ctx>),
-    Class(ClassDeclaration<'ctx, 'class>),
+    Field(Field<'ctx, 'class>),
+    Class(&'class ClassDeclaration<'ctx, 'class>),
 }
 
 pub struct FieldDeclaration<'ctx, 'class> {
@@ -27,15 +27,53 @@ pub struct FieldDeclaration<'ctx, 'class> {
     pub value: Value<'ctx, 'class>,
 }
 
-pub struct Field<'ctx> {
-    // TODO self_ should be in fact a struct that has the object pointer and methods like get_field
-    #[allow(unused)]
+pub struct Object<'ctx> {
     pub self_: PointerValue<'ctx>,
+}
+
+impl<'ctx> Object<'ctx> {
+    pub(crate) fn get_field(
+        &self,
+        field_index: usize,
+        context: ClassCompilerContext<'ctx, '_, '_>,
+        builder: &Builder<'ctx>,
+    ) -> Field<'ctx, '_> {
+        // TODO verify that the field_index is in bounds
+        let gep = builder
+            .build_struct_gep(
+                context.object_functions.object_type,
+                self.self_,
+                0,
+                "fields",
+            )
+            .unwrap();
+
+        let field = unsafe {
+            builder
+                .build_gep(
+                    context.object_functions.fields_type,
+                    gep,
+                    &[context
+                        .context
+                        .i64_type()
+                        .const_int(field_index as u64, false)],
+                    "field",
+                )
+                .unwrap()
+        };
+
+        Field::new(self, field)
+    }
+}
+
+pub struct Field<'ctx, 'a> {
+    #[allow(unused)]
+    pub self_: &'a Object<'ctx>,
     pub field: PointerValue<'ctx>,
 }
 
-impl<'ctx> Field<'ctx> {
-    pub const fn new(self_: PointerValue<'ctx>, field: PointerValue<'ctx>) -> Self {
+impl<'ctx, 'a> Field<'ctx, 'a> {
+    pub const fn new(self_: &'a Object<'ctx>, field: PointerValue<'ctx>) -> Self {
         Self { self_, field }
     }
 
@@ -84,7 +122,7 @@ impl<'ctx> ObjectFunctions<'ctx> {
         context: &'ctx Context,
         module: &inkwell::module::Module<'ctx>,
         compiler_services: &mut CompilerServices<'ctx>,
-    ) -> GlobalValue<'ctx> {
+    ) -> Object<'ctx> {
         let global = module.add_global(self.object_type, Some(*ADDRESS_SPACE), name);
 
         global.set_initializer(
@@ -190,36 +228,9 @@ impl<'ctx> ObjectFunctions<'ctx> {
             Some(global.as_pointer_value()),
         );
 
-        global
-    }
+        let self_ = global.as_pointer_value();
 
-    pub(crate) fn get_field(
-        &self,
-        descriptor: PointerValue<'ctx>,
-        field_index: usize,
-        context: ClassCompilerContext<'ctx, '_, '_>,
-        builder: &Builder<'ctx>,
-    ) -> Field<'ctx> {
-        // TODO verify that the field_index is in bounds
-        let gep = builder
-            .build_struct_gep(self.object_type, descriptor, 0, "fields")
-            .unwrap();
-
-        let field = unsafe {
-            builder
-                .build_gep(
-                    self.fields_type,
-                    gep,
-                    &[context
-                        .context
-                        .i64_type()
-                        .const_int(field_index as u64, false)],
-                    "field",
-                )
-                .unwrap()
-        };
-
-        Field::new(descriptor, field)
+        Object { self_ }
     }
 }
 
