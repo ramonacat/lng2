@@ -1,5 +1,6 @@
 mod representation;
 
+use inkwell::values::BasicValueEnum;
 use inkwell::{
     builder::Builder,
     context::Context,
@@ -77,27 +78,84 @@ impl<'ctx, 'a> Field<'ctx, 'a> {
         Self { self_, field }
     }
 
-    pub(crate) fn build_call(&self, builder: &Builder<'ctx>, context: FunctionCompilerContext) {
-        // TODO we have to assert here that the field is of the correct type
-        let function_pointer_pointer = builder
+    fn build_read_value(
+        &self,
+        builder: &Builder<'ctx>,
+        context: FunctionCompilerContext<'ctx, '_, '_>,
+    ) -> BasicValueEnum<'ctx> {
+        let value_kind_pointer = builder
+            .build_struct_gep(
+                context.object_functions().fields_type,
+                self.field,
+                2,
+                "value_kind_pointer",
+            )
+            .unwrap();
+
+        let value_kind = builder
+            .build_load(
+                context.context().i8_type(),
+                value_kind_pointer,
+                "value_kind",
+            )
+            .unwrap();
+
+        let is_kind_not_callable = builder
+            .build_int_compare(
+                inkwell::IntPredicate::NE,
+                value_kind.into_int_value(),
+                context
+                    .context()
+                    .i8_type()
+                    .const_int(ObjectFieldKind::Callable as u64, false),
+                "is_kind_not_callable",
+            )
+            .unwrap();
+
+        let then_block = context
+            .context()
+            .append_basic_block(context.function_value, "then");
+        let else_block = context
+            .context()
+            .append_basic_block(context.function_value, "else");
+
+        builder
+            .build_conditional_branch(is_kind_not_callable, then_block, else_block)
+            .unwrap();
+        builder.position_at_end(then_block);
+        builder
+            .build_direct_call(context.fatal_error(), &[], "fatal_error")
+            .unwrap();
+        builder.build_unreachable().unwrap();
+
+        builder.position_at_end(else_block);
+        let value_pointer = builder
             .build_struct_gep(
                 context.object_functions().fields_type,
                 self.field,
                 1,
-                "function_pointer",
+                "value_pointer",
             )
             .unwrap();
 
-        let function_pointer = builder
+        builder
             .build_load(
                 context.context().ptr_type(*ADDRESS_SPACE),
-                function_pointer_pointer,
+                value_pointer,
                 "deref_function",
             )
-            .unwrap();
+            .unwrap()
+    }
 
+    pub(crate) fn build_call(
+        &self,
+        builder: &Builder<'ctx>,
+        context: FunctionCompilerContext<'ctx, '_, '_>,
+    ) {
         // TODO ensure we have the correct function signature here
         // TODO handle the return value
+        let function_pointer = self.build_read_value(builder, context);
+
         builder
             .build_indirect_call(
                 context.context().void_type().fn_type(&[], false),

@@ -44,7 +44,6 @@ impl FunctionType {
 
 impl NodeType for FunctionType {
     fn pretty(&self, identifiers: &Identifiers) -> String {
-        // TODO support returning result here
         pretty_print_function_type(self.id, &self.kind, identifiers).unwrap()
     }
 }

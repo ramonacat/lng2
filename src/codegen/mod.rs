@@ -31,6 +31,7 @@ pub trait AnyCompilerContext<'ctx, 'a> {
     fn module(&self) -> &'a Module<'ctx>;
     fn object_functions(&self) -> &'a ObjectFunctions<'ctx>;
     fn identifiers(&self) -> &'a Identifiers;
+    fn fatal_error(&self) -> FunctionValue<'ctx>;
 }
 
 #[derive(Clone, Copy)]
@@ -56,6 +57,10 @@ impl<'ctx, 'a> AnyCompilerContext<'ctx, 'a> for FunctionCompilerContext<'ctx, 'a
     fn identifiers(&self) -> &'a Identifiers {
         self.class.identifiers()
     }
+
+    fn fatal_error(&self) -> FunctionValue<'ctx> {
+        self.class.fatal_error()
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -80,6 +85,10 @@ impl<'ctx, 'a> AnyCompilerContext<'ctx, 'a> for ClassCompilerContext<'ctx, 'a, '
     fn identifiers(&self) -> &'a Identifiers {
         self.compiler.identifiers
     }
+
+    fn fatal_error(&self) -> FunctionValue<'ctx> {
+        self.compiler.fatal_error
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -88,6 +97,7 @@ pub struct CompilerContext<'ctx, 'a> {
     pub module: &'a Module<'ctx>,
     pub object_functions: &'a ObjectFunctions<'ctx>,
     pub identifiers: &'a Identifiers,
+    pub fatal_error: FunctionValue<'ctx>,
 }
 
 impl<'ctx, 'a> AnyCompilerContext<'ctx, 'a> for CompilerContext<'ctx, 'a> {
@@ -105,6 +115,10 @@ impl<'ctx, 'a> AnyCompilerContext<'ctx, 'a> for CompilerContext<'ctx, 'a> {
 
     fn identifiers(&self) -> &'a Identifiers {
         self.identifiers
+    }
+
+    fn fatal_error(&self) -> FunctionValue<'ctx> {
+        self.fatal_error
     }
 }
 
@@ -348,11 +362,18 @@ impl<'ctx> ModuleGenerator<'ctx> {
     fn generate(mut self, ast: &TypedAst) {
         self.module_compiler
             .build(|context, module, compiler_services| {
+                let fatal_error = module.add_function(
+                    "fatal_error",
+                    context.void_type().fn_type(&[], false),
+                    None,
+                );
+
                 let compiler_context = CompilerContext {
                     context,
                     module,
                     object_functions: &self.object_functions,
                     identifiers: self.identifiers,
+                    fatal_error,
                 };
                 let mut class_declarations = HashMap::new();
 
