@@ -3,7 +3,7 @@ use crate::{
     identifier::Identifiers,
     types::{
         TypedAst, UntypedAst,
-        class::{ClassType, UncheckedClassType},
+        class::{ClassIdGenerator, ClassType, UncheckedClassType},
         expression::{ExpressionType, ExpressionTypeKind},
         function::{
             FunctionIdGenerator, FunctionType, FunctionTypeKind, UncheckedFunctionType,
@@ -14,6 +14,7 @@ use crate::{
 
 pub(super) struct DefinitionsChecker<'ids> {
     function_id_generator: FunctionIdGenerator,
+    class_id_generator: ClassIdGenerator,
     identifiers: &'ids Identifiers,
 }
 
@@ -55,7 +56,7 @@ impl<'ids> DefinitionsChecker<'ids> {
         Class {
             name: class.name,
             functions,
-            type_: ClassType::new(),
+            type_: ClassType::new(self.class_id_generator.next()),
         }
     }
 
@@ -142,6 +143,7 @@ impl<'ids> DefinitionsChecker<'ids> {
     pub(crate) const fn new(identifiers: &'ids Identifiers) -> Self {
         Self {
             function_id_generator: FunctionIdGenerator::new(),
+            class_id_generator: ClassIdGenerator::new(),
             identifiers,
         }
     }

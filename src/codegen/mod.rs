@@ -16,7 +16,7 @@ use crate::{
     object::{self, Object, ObjectFunctions, Value},
     types::{
         TypedAst,
-        class::ClassType,
+        class::{ClassId, ClassType},
         expression::ExpressionType,
         function::{self, FunctionId, FunctionType},
     },
@@ -92,8 +92,7 @@ impl<'ctx, 'a> AnyCompilerContext<'ctx, 'a> for FunctionCompilerContext<'ctx, 'a
 #[derive(Clone, Copy)]
 pub struct ClassCompilerContext<'ctx, 'a, 'class> {
     pub compiler: CompilerContext<'ctx, 'a>,
-    // TODO use ClassId instead of name, so that dynamic shenanigans can work
-    pub class_declarations: &'a HashMap<Identifier, ClassDeclaration<'ctx, 'class>>,
+    pub class_declarations: &'a HashMap<ClassId, ClassDeclaration<'ctx, 'class>>,
     pub function_declarations: &'a HashMap<FunctionId, FunctionValue<'ctx>>,
     pub class: &'class Class<ClassType, FunctionType, ExpressionType>,
 }
@@ -162,7 +161,7 @@ where
     fn compile_class(
         &mut self,
         compiler_context: CompilerContext<'ctx, 'class>,
-        class_declarations: &'class HashMap<Identifier, ClassDeclaration<'ctx, 'class>>,
+        class_declarations: &'class HashMap<ClassId, ClassDeclaration<'ctx, 'class>>,
         function_declarations: &'class HashMap<FunctionId, FunctionValue<'ctx>>,
     ) {
         let compiler_context = ClassCompilerContext {
@@ -270,7 +269,17 @@ where
                 Value::None
             }
             ast::ExpressionKind::VariableAccess(identifier) => {
-                Value::Class(context.class.class_declarations.get(identifier).unwrap())
+                // TODO this is hacky, instead we should have the concept of a module scope, and
+                // register the class when created
+                Value::Class(
+                    context
+                        .class
+                        .class_declarations
+                        .iter()
+                        .find(|(_, class)| class.class.name == *identifier)
+                        .unwrap()
+                        .1,
+                )
             }
             ast::ExpressionKind::FieldAccess(target, field) => {
                 let Value::Class(class) = self.compile_expression(target, builder, context) else {
@@ -436,7 +445,7 @@ impl<'ctx> ModuleGenerator<'ctx> {
                                 compiler_services,
                             );
 
-                            class_declarations.insert(class.name, class_declaration);
+                            class_declarations.insert(class.type_.id(), class_declaration);
                         }
                     }
                 }
