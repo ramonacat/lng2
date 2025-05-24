@@ -3,6 +3,7 @@ mod representation;
 use crate::codegen::{CompilerContext, make_fn_type};
 use inkwell::types::AnyType;
 use inkwell::types::AnyTypeEnum;
+use inkwell::types::FunctionType;
 use inkwell::values::BasicValueEnum;
 use inkwell::values::PointerValue;
 use inkwell::{
@@ -28,7 +29,7 @@ pub enum Value<'ctx, 'class> {
     Field(Field<'ctx, 'class>),
     Class(&'class ClassDeclaration<'ctx, 'class>),
     String(PointerValue<'ctx>),
-    IndirectCallable(AnyTypeEnum<'ctx>, BasicValueEnum<'ctx>),
+    IndirectCallable(FunctionType<'ctx>, PointerValue<'ctx>),
 }
 
 #[derive(Debug)]
@@ -176,7 +177,7 @@ impl<'ctx, 'a> Field<'ctx, 'a> {
             )
             .unwrap();
 
-        Value::IndirectCallable(self.type_, value)
+        Value::IndirectCallable(self.type_.into_function_type(), value.into_pointer_value())
     }
 
     pub(crate) fn build_call(
@@ -206,11 +207,7 @@ impl<'ctx, 'a> Field<'ctx, 'a> {
             Value::Field(_) => todo!(),
             Value::Class(_) => todo!(),
             Value::String(_) => todo!(),
-            // TODO instead of the into_* calls, just store FunctionType and PointerValue in
-            // IndirectCallable?
-            Value::IndirectCallable(type_, value) => {
-                (type_.into_function_type(), value.into_pointer_value())
-            }
+            Value::IndirectCallable(type_, value) => (type_, value),
         };
 
         builder
