@@ -19,7 +19,9 @@ lalrpop_mod!(
         clippy::cloned_instead_of_copied,
         clippy::too_many_lines,
         clippy::match_same_arms,
-        clippy::unnested_or_patterns
+        clippy::unnested_or_patterns,
+        clippy::unnecessary_wraps,
+        clippy::type_complexity,
     )]
     pub grammar,
     "/parser/grammar.rs"

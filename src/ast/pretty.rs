@@ -46,8 +46,8 @@ impl<TTarget: Write> PrettyPrinter<TTarget> {
     }
 }
 
-pub fn pretty_print<T: NodeType, TFunction: NodeType>(
-    ast: &SourceFile<T, TFunction>,
+pub fn pretty_print<TClass: NodeType, TFunction: NodeType, TExpression: NodeType>(
+    ast: &SourceFile<TClass, TFunction, TExpression>,
     identifiers: &Identifiers,
 ) -> Result<String, std::fmt::Error> {
     let mut printer = PrettyPrinter {
@@ -70,10 +70,10 @@ pub fn pretty_print<T: NodeType, TFunction: NodeType>(
     Ok(printer.target)
 }
 
-fn print_declaration<T: NodeType, TFunction: NodeType>(
+fn print_declaration<TClass: NodeType, TFunction: NodeType, TExpression: NodeType>(
     printer: &mut PrettyPrinter<impl Write>,
     identifiers: &Identifiers,
-    declaration: &super::Declaration<T, TFunction>,
+    declaration: &super::Declaration<TClass, TFunction, TExpression>,
 ) -> std::fmt::Result {
     match declaration {
         super::Declaration::Class(class) => print_class(printer, identifiers, class)?,
@@ -82,10 +82,10 @@ fn print_declaration<T: NodeType, TFunction: NodeType>(
     Ok(())
 }
 
-fn print_class<T: NodeType, TFunction: NodeType>(
+fn print_class<TClass: NodeType, TFunction: NodeType, TExpression: NodeType>(
     printer: &mut PrettyPrinter<impl Write>,
     identifiers: &Identifiers,
-    class: &super::Class<T, TFunction>,
+    class: &super::Class<TClass, TFunction, TExpression>,
 ) -> std::fmt::Result {
     println_to!(
         printer,
@@ -107,10 +107,10 @@ fn print_class<T: NodeType, TFunction: NodeType>(
     Ok(())
 }
 
-fn print_function<T: NodeType>(
+fn print_function<TFunction: NodeType, TExpression: NodeType>(
     printer: &mut PrettyPrinter<impl Write>,
     identifiers: &Identifiers,
-    function: &super::Function<T>,
+    function: &super::Function<TFunction, TExpression>,
 ) -> std::fmt::Result {
     println_to!(printer, "");
 
@@ -185,10 +185,17 @@ fn print_expression<T: NodeType>(
     expression: &super::Expression<T>,
 ) -> std::fmt::Result {
     match &expression.kind {
-        super::ExpressionKind::Call(expression) => {
+        super::ExpressionKind::Call(expression, arguments) => {
             print_expression(printer, identifiers, expression)?;
 
-            write!(printer.target, "()")?;
+            write!(printer.target, "(")?;
+
+            for argument in arguments {
+                print_expression(printer, identifiers, argument)?;
+                write!(printer.target, ",")?;
+            }
+
+            write!(printer.target, ")")?;
         }
         super::ExpressionKind::VariableAccess(identifier) => {
             write!(printer.target, "({})", identifiers.resolve(*identifier))?;
@@ -198,7 +205,21 @@ fn print_expression<T: NodeType>(
             print_expression(printer, identifiers, expression)?;
             write!(printer.target, ").{}", identifiers.resolve(*identifier))?;
         }
+        super::ExpressionKind::Literal(literal) => {
+            print_literal(printer, literal)?;
+        }
     }
 
     Ok(())
+}
+
+fn print_literal(
+    printer: &mut PrettyPrinter<impl Write>,
+    literal: &super::Literal,
+) -> std::fmt::Result {
+    match literal {
+        super::Literal::String(string) => {
+            write!(printer.target, "\"{string}\"")
+        }
+    }
 }

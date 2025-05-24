@@ -1,7 +1,10 @@
+use std::ffi::{CStr, c_char};
+
 use inkwell::{execution_engine::ExecutionEngine, module::Module};
 
-extern "C" fn printline() {
-    println!("ok");
+// TODO this should take a string object
+extern "C" fn printline(line: *const c_char) {
+    println!("{}", unsafe { CStr::from_ptr(line) }.to_str().unwrap());
 }
 
 // TODO print some actual useful information here (detailed error message, stacktrace, etc.)

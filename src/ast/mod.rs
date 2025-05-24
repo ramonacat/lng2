@@ -12,18 +12,33 @@ impl NodeType for () {
     }
 }
 
+impl NodeType for Option<TypeConstraint> {
+    fn pretty(&self, identifiers: &Identifiers) -> String {
+        match self {
+            Some(TypeConstraint::Named(identifier)) => identifiers.resolve(*identifier).to_string(),
+            None => "auto".to_string(),
+        }
+    }
+}
+
 #[derive(Debug)]
-pub struct Class<TClass: NodeType, TFunction: NodeType> {
+pub struct Class<TClass: NodeType, TFunction: NodeType, TExpression: NodeType> {
     pub name: Identifier,
-    pub functions: Vec<Function<TFunction>>,
+    pub functions: Vec<Function<TFunction, TExpression>>,
     pub type_: TClass,
 }
 
 #[derive(Debug)]
+pub enum Literal {
+    String(String),
+}
+
+#[derive(Debug)]
 pub enum ExpressionKind<TExpression: NodeType> {
-    Call(Box<Expression<TExpression>>),
+    Call(Box<Expression<TExpression>>, Vec<Expression<TExpression>>),
     VariableAccess(Identifier),
     FieldAccess(Box<Expression<TExpression>>, Identifier),
+    Literal(Literal),
 }
 
 #[derive(Debug)]
@@ -40,22 +55,35 @@ pub enum Statement<TExpression: NodeType> {
 }
 
 #[derive(Debug)]
-pub struct FunctionPrototype {
-    pub name: Identifier,
+pub enum TypeConstraint {
+    Named(Identifier),
 }
 
 #[derive(Debug)]
-pub struct Function<TFunction: NodeType> {
-    pub prototype: FunctionPrototype,
+#[allow(unused)]
+pub struct FunctionArgument<TExpression: NodeType> {
+    pub name: Identifier,
+    pub type_: TExpression,
+}
+
+#[derive(Debug)]
+pub struct FunctionPrototype<TExpression: NodeType> {
+    pub name: Identifier,
+    pub arguments: Vec<FunctionArgument<TExpression>>,
+}
+
+#[derive(Debug)]
+pub struct Function<TFunction: NodeType, TExpression: NodeType> {
+    pub prototype: FunctionPrototype<TExpression>,
     pub type_: TFunction,
 }
 
 #[derive(Debug)]
-pub enum Declaration<TClass: NodeType, TFunction: NodeType> {
-    Class(Class<TClass, TFunction>),
+pub enum Declaration<TClass: NodeType, TFunction: NodeType, TExpression: NodeType> {
+    Class(Class<TClass, TFunction, TExpression>),
 }
 
 #[derive(Debug)]
-pub struct SourceFile<TClass: NodeType, TFunction: NodeType> {
-    pub declarations: Vec<Declaration<TClass, TFunction>>,
+pub struct SourceFile<TClass: NodeType, TFunction: NodeType, TExpression: NodeType> {
+    pub declarations: Vec<Declaration<TClass, TFunction, TExpression>>,
 }

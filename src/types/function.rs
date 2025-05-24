@@ -1,13 +1,13 @@
 use std::sync::atomic::AtomicU64;
 
 use crate::{
-    ast::{NodeType, Statement, pretty::pretty_print_function_type},
+    ast::{self, NodeType, Statement, pretty::pretty_print_function_type},
     identifier::Identifiers,
 };
 
 use super::expression::ExpressionType;
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct FunctionId(u64);
 
 impl FunctionId {
@@ -50,7 +50,7 @@ impl NodeType for FunctionType {
 
 #[derive(Debug)]
 pub enum UncheckedFunctionTypeKind {
-    Statements(Vec<Statement<()>>),
+    Statements(Vec<Statement<Option<ast::TypeConstraint>>>),
     External(String),
 }
 

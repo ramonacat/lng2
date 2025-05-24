@@ -28,10 +28,10 @@ fn main() {
     let source = "
         class MyClass {
             #[extern(\"println\")]
-            fn printline();
+            fn printline(argument: string);
 
             fn main() {
-                MyClass.printline();
+                MyClass.printline(\"henlo\");
             }
         }
     ";
@@ -44,7 +44,7 @@ fn main() {
                 pretty_print(&ast, &identifiers).expect("Failed to pretty print untyped AST")
             );
 
-            let checked_ast = type_check(ast);
+            let checked_ast = type_check(ast, &identifiers);
 
             println!(
                 "{}",
@@ -55,6 +55,7 @@ fn main() {
         }
         Err(error) => {
             pretty_error(source, error);
+            std::process::exit(1);
         }
     }
 }

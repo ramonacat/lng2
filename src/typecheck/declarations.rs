@@ -1,3 +1,4 @@
+use crate::ast;
 use crate::ast::Class;
 use crate::ast::Declaration;
 use crate::ast::Function;
@@ -12,7 +13,7 @@ impl DeclarationsChecker {
     pub(crate) fn check_file(
         &self,
         ast: UntypedAst,
-    ) -> SourceFile<UncheckedClassType, UncheckedFunctionType> {
+    ) -> SourceFile<UncheckedClassType, UncheckedFunctionType, Option<ast::TypeConstraint>> {
         let mut declarations = vec![];
 
         for declaration in ast.declarations {
@@ -24,8 +25,12 @@ impl DeclarationsChecker {
 
     fn check_declaration(
         &self,
-        declaration: Declaration<(), UncheckedFunctionType>,
-    ) -> Declaration<UncheckedClassType, UncheckedFunctionType> {
+        declaration: Declaration<
+            UncheckedClassType,
+            UncheckedFunctionType,
+            Option<ast::TypeConstraint>,
+        >,
+    ) -> Declaration<UncheckedClassType, UncheckedFunctionType, Option<ast::TypeConstraint>> {
         match declaration {
             Declaration::Class(class) => Declaration::Class(self.check_class(class)),
         }
@@ -33,8 +38,8 @@ impl DeclarationsChecker {
 
     fn check_class(
         &self,
-        class: Class<(), UncheckedFunctionType>,
-    ) -> Class<UncheckedClassType, UncheckedFunctionType> {
+        class: Class<UncheckedClassType, UncheckedFunctionType, Option<ast::TypeConstraint>>,
+    ) -> Class<UncheckedClassType, UncheckedFunctionType, Option<ast::TypeConstraint>> {
         let mut functions = vec![];
 
         for function in class.functions {
@@ -52,8 +57,8 @@ impl DeclarationsChecker {
     #[allow(clippy::unused_self)]
     const fn check_function(
         &self,
-        function: Function<UncheckedFunctionType>,
-    ) -> Function<UncheckedFunctionType> {
+        function: Function<UncheckedFunctionType, Option<ast::TypeConstraint>>,
+    ) -> Function<UncheckedFunctionType, Option<ast::TypeConstraint>> {
         function
     }
 

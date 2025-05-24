@@ -1,8 +1,15 @@
 use std::collections::HashMap;
 
-use inkwell::{builder::Builder, context::Context, module::Module, values::FunctionValue};
+use inkwell::{
+    builder::Builder,
+    context::Context,
+    module::{Linkage, Module},
+    types::BasicType,
+    values::FunctionValue,
+};
 
 use crate::{
+    ADDRESS_SPACE,
     ast::{self, Class, Expression, Function},
     identifier::{Identifier, Identifiers},
     module::{CompilerServices, ModuleCompiler},
@@ -11,10 +18,29 @@ use crate::{
         TypedAst,
         class::ClassType,
         expression::ExpressionType,
-        function::{self, FunctionType},
+        function::{self, FunctionId, FunctionType},
     },
 };
 
+pub fn make_fn_type<'ctx>(
+    prototype: &ast::FunctionPrototype<ExpressionType>,
+    context: CompilerContext<'ctx, '_>,
+) -> inkwell::types::FunctionType<'ctx> {
+    let arguments: Vec<_> = prototype
+        .arguments
+        .iter()
+        .map(|x| match x.type_.kind() {
+            crate::types::expression::ExpressionTypeKind::Todo => todo!(),
+            crate::types::expression::ExpressionTypeKind::String => context
+                .context()
+                .ptr_type(*ADDRESS_SPACE)
+                .as_basic_type_enum()
+                .into(),
+        })
+        .collect();
+
+    context.context().void_type().fn_type(&arguments[..], false)
+}
 pub fn codegen(ast: &TypedAst, identifiers: &Identifiers) {
     let context = Context::create();
     let module_generator = ModuleGenerator::new(&context, identifiers);
@@ -23,7 +49,7 @@ pub fn codegen(ast: &TypedAst, identifiers: &Identifiers) {
 }
 
 struct ClassCompiler<'class> {
-    class: &'class Class<ClassType, FunctionType>,
+    class: &'class Class<ClassType, FunctionType, ExpressionType>,
 }
 
 pub trait AnyCompilerContext<'ctx, 'a> {
@@ -38,7 +64,7 @@ pub trait AnyCompilerContext<'ctx, 'a> {
 pub struct FunctionCompilerContext<'ctx, 'a, 'class> {
     pub class: ClassCompilerContext<'ctx, 'a, 'class>,
     pub function_value: FunctionValue<'ctx>,
-    pub function: &'a Function<FunctionType>,
+    pub function: &'a Function<FunctionType, ExpressionType>,
 }
 
 impl<'ctx, 'a> AnyCompilerContext<'ctx, 'a> for FunctionCompilerContext<'ctx, 'a, '_> {
@@ -66,7 +92,10 @@ impl<'ctx, 'a> AnyCompilerContext<'ctx, 'a> for FunctionCompilerContext<'ctx, 'a
 #[derive(Clone, Copy)]
 pub struct ClassCompilerContext<'ctx, 'a, 'class> {
     pub compiler: CompilerContext<'ctx, 'a>,
+    // TODO use ClassId instead of name, so that dynamic shenanigans can work
     pub class_declarations: &'a HashMap<Identifier, ClassDeclaration<'ctx, 'class>>,
+    pub function_declarations: &'a HashMap<FunctionId, FunctionValue<'ctx>>,
+    pub class: &'class Class<ClassType, FunctionType, ExpressionType>,
 }
 
 impl<'ctx, 'a> AnyCompilerContext<'ctx, 'a> for ClassCompilerContext<'ctx, 'a, '_> {
@@ -126,18 +155,28 @@ impl<'ctx, 'class> ClassCompiler<'class>
 where
     'ctx: 'class,
 {
-    const fn new(class: &'class Class<ClassType, FunctionType>) -> Self {
+    const fn new(class: &'class Class<ClassType, FunctionType, ExpressionType>) -> Self {
         Self { class }
     }
 
-    fn compile_class(&mut self, compiler_context: ClassCompilerContext<'ctx, 'class, 'class>) {
-        let class = compiler_context
-            .class_declarations
-            .get(&self.class.name)
-            .unwrap();
+    fn compile_class(
+        &mut self,
+        compiler_context: CompilerContext<'ctx, 'class>,
+        class_declarations: &'class HashMap<Identifier, ClassDeclaration<'ctx, 'class>>,
+        function_declarations: &'class HashMap<FunctionId, FunctionValue<'ctx>>,
+    ) {
+        let compiler_context = ClassCompilerContext {
+            compiler: compiler_context,
+            class_declarations,
+            function_declarations,
+            class: self.class,
+        };
 
         for function in &self.class.functions {
-            let function_value = class.methods.get(&function.prototype.name).unwrap();
+            let function_value = compiler_context
+                .function_declarations
+                .get(&function.type_.id())
+                .unwrap();
 
             let function_compiler_context = FunctionCompilerContext {
                 class: compiler_context,
@@ -181,23 +220,24 @@ where
             function::FunctionTypeKind::External(external_name) => {
                 let external = context.module().add_function(
                     external_name,
-                    // TODO actually set the correct type here
-                    context.context().void_type().fn_type(&[], false),
+                    make_fn_type(&context.function.prototype, context.class.compiler),
                     None,
                 );
-                let trampoline = *context
-                    .class
-                    .class_declarations
-                    .get(&self.class.name)
-                    .unwrap()
-                    .methods
-                    .get(&context.function.prototype.name)
-                    .unwrap();
+                let trampoline = context.function_value;
+                trampoline.set_linkage(Linkage::Internal);
+
                 let builder = context.context().create_builder();
                 let entry_block = context.context().append_basic_block(trampoline, "entry");
                 builder.position_at_end(entry_block);
 
-                builder.build_call(external, &[], "external_call").unwrap();
+                let params = trampoline
+                    .get_params()
+                    .into_iter()
+                    .map(Into::into)
+                    .collect::<Vec<_>>();
+                builder
+                    .build_call(external, &params, "external_call")
+                    .unwrap();
                 builder.build_return(None).unwrap();
 
                 trampoline
@@ -213,15 +253,19 @@ where
         context: FunctionCompilerContext<'ctx, 'class, 'class>,
     ) -> Value<'ctx, 'class> {
         match &expression.kind {
-            ast::ExpressionKind::Call(expression) => {
+            ast::ExpressionKind::Call(expression, arguments) => {
                 // TODO differentiate between static and non-static methods
                 let expression = self.compile_expression(expression, builder, context);
+                let arguments: Vec<_> = arguments
+                    .iter()
+                    .map(|x| self.compile_expression(x, builder, context))
+                    .collect();
 
                 let Value::Field(field) = expression else {
                     todo!();
                 };
 
-                field.build_call(builder, context);
+                field.build_call(arguments, builder, context);
 
                 Value::None
             }
@@ -235,6 +279,13 @@ where
 
                 class.field_access(*field, builder, context)
             }
+            ast::ExpressionKind::Literal(literal) => match literal {
+                ast::Literal::String(value) => {
+                    let global_string = builder.build_global_string_ptr(value, "literal").unwrap();
+
+                    Value::String(global_string.as_pointer_value())
+                }
+            },
         }
     }
 }
@@ -246,28 +297,27 @@ impl<'class> ClassCompilers<'class> {
         Self(HashMap::new())
     }
 
-    fn add(&mut self, class: &'class Class<ClassType, FunctionType>) {
+    fn add(&mut self, class: &'class Class<ClassType, FunctionType, ExpressionType>) {
         self.0.insert(class.name, ClassCompiler::new(class));
     }
 }
 
+#[derive(Debug)]
 pub struct ClassDeclaration<'ctx, 'class> {
     descriptor: Object<'ctx>,
-    methods: HashMap<Identifier, FunctionValue<'ctx>>,
     field_indices: HashMap<Identifier, u64>,
     #[allow(unused)]
-    class: &'class Class<ClassType, FunctionType>,
+    class: &'class Class<ClassType, FunctionType, ExpressionType>,
 }
 
 impl<'ctx, 'class> ClassDeclaration<'ctx, 'class> {
     fn new(
         // TODO pass ClassCompilerContext here as an arg instead of all the things?
-        class: &'class Class<ClassType, FunctionType>,
+        class: &'class Class<ClassType, FunctionType, ExpressionType>,
+        declared_functions: &mut HashMap<FunctionId, FunctionValue<'ctx>>,
         context: CompilerContext<'ctx, '_>,
         compiler_services: &mut CompilerServices<'ctx>,
     ) -> Self {
-        let mut field_indices = HashMap::new();
-
         let methods = class
             .functions
             .iter()
@@ -285,37 +335,35 @@ impl<'ctx, 'class> ClassDeclaration<'ctx, 'class> {
                 };
 
                 (
-                    x.prototype.name,
-                    context.module().add_function(
-                        name,
-                        context.context().void_type().fn_type(&[], false),
-                        None,
-                    ),
+                    x,
+                    context
+                        .module()
+                        .add_function(name, make_fn_type(&x.prototype, context), None),
                 )
             })
-            .collect::<HashMap<_, _>>();
+            .collect::<Vec<_>>();
 
         let mut fields = vec![];
+        let mut field_indices = HashMap::new();
 
-        for (index, (name, function)) in methods.iter().enumerate() {
+        for (index, (function_ast, function)) in methods.iter().enumerate() {
             fields.push(object::FieldDeclaration {
-                name: *name,
+                name: function_ast.prototype.name,
                 value: Value::Callable(*function),
             });
-            field_indices.insert(*name, index as u64);
+            field_indices.insert(function_ast.prototype.name, index as u64);
+            declared_functions.insert(function_ast.type_.id(), *function);
         }
 
         let descriptor = context.object_functions().declare_class(
             context.identifiers().resolve(class.name),
             &fields,
-            context.context(),
-            context.module(),
+            context,
             compiler_services,
         );
 
         Self {
             descriptor,
-            methods,
             field_indices,
             class,
         }
@@ -376,22 +424,22 @@ impl<'ctx> ModuleGenerator<'ctx> {
                     fatal_error,
                 };
                 let mut class_declarations = HashMap::new();
+                let mut function_declarations = HashMap::new();
 
                 for declaration in &ast.declarations {
                     match declaration {
                         ast::Declaration::Class(class) => {
-                            class_declarations.insert(
-                                class.name,
-                                ClassDeclaration::new(class, compiler_context, compiler_services),
+                            let class_declaration = ClassDeclaration::new(
+                                class,
+                                &mut function_declarations,
+                                compiler_context,
+                                compiler_services,
                             );
+
+                            class_declarations.insert(class.name, class_declaration);
                         }
                     }
                 }
-
-                let compiler_context = ClassCompilerContext {
-                    compiler: compiler_context,
-                    class_declarations: &class_declarations,
-                };
 
                 let mut classes = ClassCompilers::new();
                 let mut id = None;
@@ -404,11 +452,12 @@ impl<'ctx> ModuleGenerator<'ctx> {
                         }
                     }
                 }
-                classes
-                    .0
-                    .get_mut(&id.unwrap())
-                    .unwrap()
-                    .compile_class(compiler_context);
+
+                classes.0.get_mut(&id.unwrap()).unwrap().compile_class(
+                    compiler_context,
+                    &class_declarations,
+                    &function_declarations,
+                );
             });
 
         println!("{:?}", &self.module_compiler);

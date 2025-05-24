@@ -1,4 +1,5 @@
 use crate::identifier::{Identifiers, Identifier};
+use crate::types::class::UncheckedClassType;
 use crate::types::function::UncheckedFunctionType;
 use crate::types::function::UncheckedFunctionTypeKind;
 use crate::ast;
@@ -13,32 +14,70 @@ Identifier: Identifier = {
     r"\p{ID_Start}\p{ID_Continue}*" => identifiers.intern(<>)
 };
 
-Expression: ast::Expression<()> = {
+Literal: ast::Literal = {
+    <string:String> => ast::Literal::String(string)
+};
+
+CallArguments: Vec<ast::Expression<Option<ast::TypeConstraint>>> = {
+    <mut r:CallArguments> "," <l:Expression> => {
+        r.push(l);
+
+        r
+    },
+    <l:Expression> => vec![l],
+};
+
+Expression: ast::Expression<Option<ast::TypeConstraint>> = {
     <variable:Identifier> => ast::Expression {
         kind: ast::ExpressionKind::VariableAccess(variable),
-        type_: ()
+        type_: None
     },
     <target:Expression> "." <name:Identifier> => ast::Expression {
         kind: ast::ExpressionKind::FieldAccess(Box::new(target), name),
-        type_: ()
+        type_: None
     },
-    <target:Expression> "(" ")" => ast::Expression {
-        kind: ast::ExpressionKind::Call(Box::new(target)),
-        type_: ()
+    <target:Expression> "(" <arguments:CallArguments?> ")" => ast::Expression {
+        kind: ast::ExpressionKind::Call(Box::new(target), arguments.unwrap_or_default()),
+        type_: None
+    },
+    <literal:Literal> => ast::Expression {
+        kind: ast::ExpressionKind::Literal(literal),
+        type_: None
     }
 }
 
-Statement: ast::Statement<()> = {
+Statement: ast::Statement<Option<ast::TypeConstraint>> = {
     <expression:Expression> ";" => ast::Statement::Expression(expression)
 }
 
-FunctionPrototype: ast::FunctionPrototype = {
-    "fn" <name:Identifier> "(" ")" => ast::FunctionPrototype {
-        name
+TypeConstraint: ast::TypeConstraint = {
+    <name:Identifier> => ast::TypeConstraint::Named(name)
+};
+
+FunctionArgument: ast::FunctionArgument<Option<ast::TypeConstraint>> = {
+    <name:Identifier> ":" <type_:TypeConstraint> => ast::FunctionArgument {
+        name,
+        type_: Some(type_)
     }
 }
 
-Function: ast::Function<UncheckedFunctionType> = {
+FunctionArguments: Vec<ast::FunctionArgument<Option<ast::TypeConstraint>>> = {
+    <mut l:FunctionArguments> "," <r:FunctionArgument> => {
+        l.push(r);
+
+        l
+    },
+    <l:FunctionArgument> => vec![l],
+}
+
+FunctionPrototype: ast::FunctionPrototype<Option<ast::TypeConstraint>> = {
+    "fn" <name:Identifier> "(" <arguments:FunctionArguments?> ","? ")" => ast::FunctionPrototype {
+        name,
+        arguments: arguments.unwrap_or_default(),
+    }
+}
+
+Function: ast::Function<UncheckedFunctionType, Option<ast::TypeConstraint>> = {
     <prototype:FunctionPrototype> "{" <statements:(<Statement>)*> "}" => ast::Function { 
         type_: UncheckedFunctionType::new(UncheckedFunctionTypeKind::Statements(statements)),
         prototype
@@ -51,21 +90,21 @@ Function: ast::Function<UncheckedFunctionType> = {
     }
 }
 
-Class: ast::Class<(), UncheckedFunctionType> = {
+Class: ast::Class<UncheckedClassType, UncheckedFunctionType, Option<ast::TypeConstraint>> = {
     "class" <name:Identifier> "{"
         <functions:(<Function>)*>
     "}" => ast::Class {
         name,
         functions,
-        type_: ()
+        type_: UncheckedClassType::new()
     }
 }
 
-Declaration: ast::Declaration<(), UncheckedFunctionType> = {
+Declaration: ast::Declaration<UncheckedClassType, UncheckedFunctionType, Option<ast::TypeConstraint>> = {
     <class:Class> => ast::Declaration::Class(class),
 }
 
-pub SourceFile: ast::SourceFile<(), UncheckedFunctionType> = { 
+pub SourceFile: ast::SourceFile<UncheckedClassType, UncheckedFunctionType, Option<ast::TypeConstraint>> = { 
     <declarations:(<Declaration>)*> => ast::SourceFile {
         declarations
     }
