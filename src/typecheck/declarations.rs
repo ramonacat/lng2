@@ -4,7 +4,10 @@ use crate::ast::Declaration;
 use crate::ast::Function;
 use crate::ast::SourceFile;
 use crate::types::UntypedAst;
+use crate::types::class::ClassId;
 use crate::types::class::UncheckedClassType;
+use crate::types::expression::ExpressionType;
+use crate::types::expression::ExpressionTypeKind;
 use crate::types::function::IntermediateFunctionType;
 use crate::types::function::UncheckedFunctionType;
 
@@ -40,7 +43,7 @@ impl DeclarationsChecker {
         let mut functions = vec![];
 
         for function in class.functions {
-            let checked_function = self.check_function(function);
+            let checked_function = self.check_function(function, class.type_.id());
             functions.push(checked_function);
         }
 
@@ -55,9 +58,13 @@ impl DeclarationsChecker {
     fn check_function(
         &self,
         function: Function<UncheckedFunctionType, ast::TypeConstraint>,
+        class_id: ClassId,
     ) -> Function<IntermediateFunctionType, ast::TypeConstraint> {
-        // TODO if the function is not static, this should be the type of the enclosing class
-        let self_ = None;
+        let self_ = if function.prototype.static_ {
+            None
+        } else {
+            Some(ExpressionType::new(ExpressionTypeKind::Class(class_id)))
+        };
 
         Function {
             type_: IntermediateFunctionType::new(
