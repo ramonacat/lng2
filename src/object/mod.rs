@@ -22,7 +22,7 @@ use crate::{
 
 // TODO we should really only have an Object and Primitive in terms of kinds of values here, the
 // rest should be handled by builtin magical objects
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub enum Value<'ctx, 'class> {
     None,
     Callable(FunctionValue<'ctx>),
@@ -86,7 +86,7 @@ impl<'ctx> Object<'ctx> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub struct Field<'ctx, 'a> {
     #[allow(unused)]
     pub self_: &'a Object<'ctx>,

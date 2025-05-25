@@ -1,3 +1,5 @@
+mod scope;
+
 use std::collections::HashMap;
 
 use inkwell::{
@@ -7,6 +9,7 @@ use inkwell::{
     types::BasicType,
     values::FunctionValue,
 };
+use scope::Scope;
 
 use crate::{
     ADDRESS_SPACE,
@@ -16,7 +19,7 @@ use crate::{
     object::{self, Object, ObjectFunctions, Value},
     types::{
         TypedAst,
-        class::{ClassId, ClassType},
+        class::ClassType,
         expression::ExpressionType,
         function::{self, FunctionId, FunctionType},
     },
@@ -92,7 +95,6 @@ impl<'ctx, 'a> AnyCompilerContext<'ctx, 'a> for FunctionCompilerContext<'ctx, 'a
 #[derive(Clone, Copy)]
 pub struct ClassCompilerContext<'ctx, 'a, 'class> {
     pub compiler: CompilerContext<'ctx, 'a>,
-    pub class_declarations: &'a HashMap<ClassId, ClassDeclaration<'ctx, 'class>>,
     pub function_declarations: &'a HashMap<FunctionId, FunctionValue<'ctx>>,
     pub class: &'class Class<ClassType, FunctionType, ExpressionType>,
 }
@@ -161,12 +163,11 @@ where
     fn compile_class(
         &mut self,
         compiler_context: CompilerContext<'ctx, 'class>,
-        class_declarations: &'class HashMap<ClassId, ClassDeclaration<'ctx, 'class>>,
+        mut scope: Scope<'ctx, 'class>,
         function_declarations: &'class HashMap<FunctionId, FunctionValue<'ctx>>,
     ) {
         let compiler_context = ClassCompilerContext {
             compiler: compiler_context,
-            class_declarations,
             function_declarations,
             class: self.class,
         };
@@ -183,14 +184,17 @@ where
                 function,
             };
 
-            self.compile_function(function_compiler_context);
+            scope = self
+                .compile_function(scope.into_child(), function_compiler_context)
+                .1;
         }
     }
 
     fn compile_function(
         &mut self,
+        scope: Scope<'ctx, 'class>,
         context: FunctionCompilerContext<'ctx, 'class, 'class>,
-    ) -> FunctionValue<'ctx>
+    ) -> (FunctionValue<'ctx>, Scope<'ctx, 'class>)
     where
         'ctx: 'class,
     {
@@ -205,7 +209,7 @@ where
                 for statement in statements {
                     match statement {
                         ast::Statement::Expression(expression) => {
-                            self.compile_expression(expression, &builder, context);
+                            self.compile_expression(expression, &scope, &builder, context);
                         }
                     }
                 }
@@ -214,7 +218,7 @@ where
                 // that this we always have one (or never have one if the type is void)
                 builder.build_return(None).unwrap();
 
-                context.function_value
+                (context.function_value, scope.into_parent().unwrap())
             }
             function::FunctionTypeKind::External(external_name) => {
                 let external = context.module().add_function(
@@ -239,7 +243,7 @@ where
                     .unwrap();
                 builder.build_return(None).unwrap();
 
-                trampoline
+                (trampoline, scope.into_parent().unwrap())
             }
         }
     }
@@ -248,16 +252,17 @@ where
     fn compile_expression(
         &mut self,
         expression: &Expression<ExpressionType>,
+        scope: &Scope<'ctx, 'class>,
         builder: &Builder<'ctx>,
         context: FunctionCompilerContext<'ctx, 'class, 'class>,
     ) -> Value<'ctx, 'class> {
         match &expression.kind {
             ast::ExpressionKind::Call(expression, arguments) => {
                 // TODO differentiate between static and non-static methods
-                let expression = self.compile_expression(expression, builder, context);
+                let expression = self.compile_expression(expression, scope, builder, context);
                 let arguments: Vec<_> = arguments
                     .iter()
-                    .map(|x| self.compile_expression(x, builder, context))
+                    .map(|x| self.compile_expression(x, scope, builder, context))
                     .collect();
 
                 let Value::Field(field) = expression else {
@@ -268,21 +273,10 @@ where
 
                 Value::None
             }
-            ast::ExpressionKind::VariableAccess(identifier) => {
-                // TODO this is hacky, instead we should have the concept of a module scope, and
-                // register the class when created
-                Value::Class(
-                    context
-                        .class
-                        .class_declarations
-                        .iter()
-                        .find(|(_, class)| class.class.name == *identifier)
-                        .unwrap()
-                        .1,
-                )
-            }
+            ast::ExpressionKind::VariableAccess(identifier) => *scope.get(*identifier).unwrap(),
             ast::ExpressionKind::FieldAccess(target, field) => {
-                let Value::Class(class) = self.compile_expression(target, builder, context) else {
+                let Value::Class(class) = self.compile_expression(target, scope, builder, context)
+                else {
                     todo!();
                 };
 
@@ -450,6 +444,11 @@ impl<'ctx> ModuleGenerator<'ctx> {
                     }
                 }
 
+                let mut scope: Scope<'ctx, '_> = Scope::new();
+                for class in class_declarations.values() {
+                    scope.set(class.class.name, Value::Class(class));
+                }
+
                 let mut classes = ClassCompilers::new();
                 let mut id = None;
 
@@ -464,7 +463,7 @@ impl<'ctx> ModuleGenerator<'ctx> {
 
                 classes.0.get_mut(&id.unwrap()).unwrap().compile_class(
                     compiler_context,
-                    &class_declarations,
+                    scope,
                     &function_declarations,
                 );
             });
