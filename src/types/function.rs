@@ -1,3 +1,4 @@
+use std::fmt::Write;
 use std::sync::atomic::AtomicU64;
 
 use crate::{
@@ -57,6 +58,64 @@ pub enum UncheckedFunctionTypeKind {
 #[derive(Debug)]
 pub struct UncheckedFunctionType {
     kind: UncheckedFunctionTypeKind,
+}
+
+#[derive(Debug)]
+pub struct IntermediateFunctionType {
+    kind: UncheckedFunctionTypeKind,
+    self_: Option<ExpressionType>,
+    arguments: Vec<ast::TypeConstraint>,
+    return_type: ast::TypeConstraint,
+}
+impl IntermediateFunctionType {
+    pub(crate) const fn new(
+        kind: UncheckedFunctionTypeKind,
+        self_: Option<ExpressionType>,
+        arguments: Vec<ast::TypeConstraint>,
+        return_type: ast::TypeConstraint,
+    ) -> Self {
+        Self {
+            kind,
+            self_,
+            arguments,
+            return_type,
+        }
+    }
+
+    pub(crate) fn into_kind(self) -> UncheckedFunctionTypeKind {
+        self.kind
+    }
+}
+
+impl NodeType for IntermediateFunctionType {
+    fn pretty(&self, identifiers: &Identifiers) -> String {
+        let mut result = "fn(".to_string();
+
+        if let Some(self_) = &self.self_ {
+            result += "self: ";
+            result += &self_.pretty(identifiers);
+            result += ", ";
+        }
+
+        for argument in &self.arguments {
+            result += &argument.pretty(identifiers);
+            result += ", ";
+        }
+
+        result += "): ";
+
+        result += &self.return_type.pretty(identifiers);
+
+        match &self.kind {
+            UncheckedFunctionTypeKind::Statements(_) => write!(result, "(statements);"),
+            UncheckedFunctionTypeKind::External(external_name) => {
+                write!(result, "(external({external_name}))")
+            }
+        }
+        .unwrap();
+
+        result
+    }
 }
 
 impl UncheckedFunctionType {

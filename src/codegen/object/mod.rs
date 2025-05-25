@@ -173,7 +173,13 @@ impl<'ctx, 'a> Field<'ctx, 'a> {
             .build_load(
                 context.context().ptr_type(*ADDRESS_SPACE),
                 value_pointer,
-                "deref_function",
+                &format!(
+                    "deref_function_{}__{}",
+                    context.identifiers().resolve(context.class.class.name),
+                    context
+                        .identifiers()
+                        .resolve(context.function.prototype.name)
+                ),
             )
             .unwrap();
 

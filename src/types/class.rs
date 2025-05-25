@@ -3,10 +3,17 @@ use std::sync::atomic::AtomicU64;
 use crate::{ast::NodeType, identifier::Identifiers};
 
 #[derive(Debug)]
-pub struct UncheckedClassType {}
+pub struct UncheckedClassType {
+    id: ClassId,
+}
+
 impl UncheckedClassType {
-    pub(crate) const fn new() -> Self {
-        Self {}
+    pub(crate) const fn new(id: ClassId) -> Self {
+        Self { id }
+    }
+
+    pub(crate) const fn id(&self) -> ClassId {
+        self.id
     }
 }
 
@@ -18,6 +25,12 @@ impl NodeType for UncheckedClassType {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct ClassId(u64);
+
+impl ClassId {
+    pub const fn into_u64(self) -> u64 {
+        self.0
+    }
+}
 
 pub struct ClassIdGenerator {
     current: AtomicU64,

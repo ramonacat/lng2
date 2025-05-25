@@ -1,4 +1,7 @@
-use crate::{parser::grammar::Token, types::UntypedAst};
+use crate::{
+    parser::grammar::Token,
+    types::{UntypedAst, class::ClassIdGenerator},
+};
 use lalrpop_util::{ParseError, lalrpop_mod};
 
 use crate::identifier::Identifiers;
@@ -30,6 +33,7 @@ lalrpop_mod!(
 pub fn parse<'src>(
     contents: &'src str,
     identifiers: &mut Identifiers,
+    class_id_generator: &mut ClassIdGenerator,
 ) -> Result<UntypedAst, ParseError<usize, Token<'src>, &'static str>> {
-    grammar::SourceFileParser::new().parse(identifiers, contents)
+    grammar::SourceFileParser::new().parse(identifiers, class_id_generator, contents)
 }

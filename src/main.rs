@@ -18,12 +18,11 @@ use identifier::Identifiers;
 use inkwell::AddressSpace;
 use parser::parse;
 use typecheck::type_check;
+use types::class::ClassIdGenerator;
 
 static ADDRESS_SPACE: LazyLock<AddressSpace> = LazyLock::new(AddressSpace::default);
 
 fn main() {
-    let mut identifiers = Identifiers::new();
-
     let source = "
         class MyClass {
             #[extern(\"println\")]
@@ -39,7 +38,10 @@ fn main() {
             }
         }
     ";
-    let ast = parse(source, &mut identifiers);
+    let mut identifiers = Identifiers::new();
+    let mut class_id_generator = ClassIdGenerator::new();
+
+    let ast = parse(source, &mut identifiers, &mut class_id_generator);
 
     match ast {
         Ok(ast) => {

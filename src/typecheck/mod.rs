@@ -1,5 +1,6 @@
 mod declarations;
 mod definitions;
+mod scope;
 
 use declarations::DeclarationsChecker;
 use definitions::DefinitionsChecker;

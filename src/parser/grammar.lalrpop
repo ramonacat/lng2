@@ -1,10 +1,11 @@
 use crate::identifier::{Identifiers, Identifier};
 use crate::types::class::UncheckedClassType;
+use crate::types::class::ClassIdGenerator;
 use crate::types::function::UncheckedFunctionType;
 use crate::types::function::UncheckedFunctionTypeKind;
 use crate::ast;
 
-grammar(identifiers: &mut Identifiers);
+grammar(identifiers: &mut Identifiers, class_id_generator: &mut ClassIdGenerator);
 
 String: String = {
     r#""(\\"|[^"])*""# => String::from(&<>[1..<>.len() - 1])
@@ -98,7 +99,7 @@ Class: ast::Class<UncheckedClassType, UncheckedFunctionType, ast::TypeConstraint
     "}" => ast::Class {
         name,
         functions,
-        type_: UncheckedClassType::new()
+        type_: UncheckedClassType::new(class_id_generator.next())
     }
 }
 

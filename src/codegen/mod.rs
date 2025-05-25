@@ -34,23 +34,27 @@ pub fn make_fn_type<'ctx>(
         .arguments
         .iter()
         .map(|x| match x.type_.kind() {
-            crate::types::expression::ExpressionTypeKind::Todo => todo!(),
             crate::types::expression::ExpressionTypeKind::String => context
                 .context()
                 .ptr_type(*ADDRESS_SPACE)
                 .as_basic_type_enum()
                 .into(),
+            crate::types::expression::ExpressionTypeKind::Class(_) => todo!(),
+            crate::types::expression::ExpressionTypeKind::Unit => todo!(),
+            crate::types::expression::ExpressionTypeKind::Callable { .. } => todo!(),
         })
         .collect();
 
     match &prototype.return_type.kind() {
-        crate::types::expression::ExpressionTypeKind::Todo => {
+        crate::types::expression::ExpressionTypeKind::Unit => {
             context.context().void_type().fn_type(&arguments[..], false)
         }
         crate::types::expression::ExpressionTypeKind::String => context
             .context()
             .ptr_type(*ADDRESS_SPACE)
             .fn_type(&arguments[..], false),
+        crate::types::expression::ExpressionTypeKind::Class(_) => todo!(),
+        crate::types::expression::ExpressionTypeKind::Callable { .. } => todo!(),
     }
 }
 
