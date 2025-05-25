@@ -31,11 +31,7 @@ impl<'ids> DefinitionsChecker<'ids> {
 
     fn check_declaration(
         &self,
-        declaration: Declaration<
-            UncheckedClassType,
-            UncheckedFunctionType,
-            Option<ast::TypeConstraint>,
-        >,
+        declaration: Declaration<UncheckedClassType, UncheckedFunctionType, ast::TypeConstraint>,
     ) -> Declaration<ClassType, FunctionType, ExpressionType> {
         match declaration {
             Declaration::Class(class) => Declaration::Class(self.check_class(class)),
@@ -44,7 +40,7 @@ impl<'ids> DefinitionsChecker<'ids> {
 
     fn check_class(
         &self,
-        class: Class<UncheckedClassType, UncheckedFunctionType, Option<ast::TypeConstraint>>,
+        class: Class<UncheckedClassType, UncheckedFunctionType, ast::TypeConstraint>,
     ) -> Class<ClassType, FunctionType, ExpressionType> {
         let mut functions = vec![];
 
@@ -62,7 +58,7 @@ impl<'ids> DefinitionsChecker<'ids> {
 
     fn check_function(
         &self,
-        function: Function<UncheckedFunctionType, Option<ast::TypeConstraint>>,
+        function: Function<UncheckedFunctionType, ast::TypeConstraint>,
     ) -> Function<FunctionType, ExpressionType> {
         let kind = match function.type_.into_kind() {
             UncheckedFunctionTypeKind::Statements(statements) => FunctionTypeKind::Statements(
@@ -87,6 +83,7 @@ impl<'ids> DefinitionsChecker<'ids> {
                     type_: self.type_constraint_to_type(x.type_),
                 })
                 .collect(),
+            return_type: self.type_constraint_to_type(function.prototype.return_type),
         };
 
         Function {
@@ -97,7 +94,7 @@ impl<'ids> DefinitionsChecker<'ids> {
 
     fn check_statement(
         &self,
-        statement: Statement<Option<ast::TypeConstraint>>,
+        statement: Statement<ast::TypeConstraint>,
     ) -> Statement<ExpressionType> {
         match statement {
             Statement::Expression(expression) => {
@@ -109,7 +106,7 @@ impl<'ids> DefinitionsChecker<'ids> {
     #[allow(clippy::only_used_in_recursion)]
     fn check_expression(
         &self,
-        expression: crate::ast::Expression<Option<ast::TypeConstraint>>,
+        expression: crate::ast::Expression<ast::TypeConstraint>,
     ) -> crate::ast::Expression<ExpressionType> {
         match expression.kind {
             crate::ast::ExpressionKind::Call(expression, arguments) => Expression {
@@ -155,18 +152,14 @@ impl<'ids> DefinitionsChecker<'ids> {
         }
     }
 
-    fn type_constraint_to_type(
-        &self,
-        type_constraint: Option<ast::TypeConstraint>,
-    ) -> ExpressionType {
-        // TODO either return an Err() here or infer the type if it's possible in the given place
-        let type_constraint = type_constraint.unwrap();
-
+    fn type_constraint_to_type(&self, type_constraint: ast::TypeConstraint) -> ExpressionType {
         match type_constraint {
             ast::TypeConstraint::Named(identifier) => match self.identifiers.resolve(identifier) {
                 "string" => ExpressionType::new(ExpressionTypeKind::String), // TODO Should this be Object("builtin.string")?
+                "unit" => ExpressionType::new(ExpressionTypeKind::Todo),
                 _ => todo!(),
             },
+            ast::TypeConstraint::Unknown => todo!(),
         }
     }
 }

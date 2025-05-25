@@ -28,9 +28,9 @@ fn main() {
     let source = "
         class MyClass {
             #[extern(\"println\")]
-            fn printline(argument: string);
+            fn printline(argument: string): unit;
 
-            fn main() {
+            fn main(): unit {
                 MyClass.printline(\"henlo\");
             }
         }

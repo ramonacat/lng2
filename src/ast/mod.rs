@@ -12,11 +12,11 @@ impl NodeType for () {
     }
 }
 
-impl NodeType for Option<TypeConstraint> {
+impl NodeType for TypeConstraint {
     fn pretty(&self, identifiers: &Identifiers) -> String {
         match self {
-            Some(TypeConstraint::Named(identifier)) => identifiers.resolve(*identifier).to_string(),
-            None => "auto".to_string(),
+            Self::Named(identifier) => identifiers.resolve(*identifier).to_string(),
+            Self::Unknown => "unknown".to_string(),
         }
     }
 }
@@ -54,9 +54,10 @@ pub enum Statement<TExpression: NodeType> {
     Expression(Expression<TExpression>),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub enum TypeConstraint {
     Named(Identifier),
+    Unknown,
 }
 
 #[derive(Debug)]
@@ -70,6 +71,7 @@ pub struct FunctionArgument<TExpression: NodeType> {
 pub struct FunctionPrototype<TExpression: NodeType> {
     pub name: Identifier,
     pub arguments: Vec<FunctionArgument<TExpression>>,
+    pub return_type: TExpression,
 }
 
 #[derive(Debug)]

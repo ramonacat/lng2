@@ -50,7 +50,7 @@ impl NodeType for FunctionType {
 
 #[derive(Debug)]
 pub enum UncheckedFunctionTypeKind {
-    Statements(Vec<Statement<Option<ast::TypeConstraint>>>),
+    Statements(Vec<Statement<ast::TypeConstraint>>),
     External(String),
 }
 

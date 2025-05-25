@@ -27,8 +27,6 @@ lalrpop_mod!(
     "/parser/grammar.rs"
 );
 
-// TODO this should probably return a Result and allow higher-level code to handle printing the
-// Errors
 pub fn parse<'src>(
     contents: &'src str,
     identifiers: &mut Identifiers,

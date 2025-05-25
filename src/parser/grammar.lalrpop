@@ -18,7 +18,7 @@ Literal: ast::Literal = {
     <string:String> => ast::Literal::String(string)
 };
 
-CallArguments: Vec<ast::Expression<Option<ast::TypeConstraint>>> = {
+CallArguments: Vec<ast::Expression<ast::TypeConstraint>> = {
     <mut r:CallArguments> "," <l:Expression> => {
         r.push(l);
 
@@ -27,26 +27,25 @@ CallArguments: Vec<ast::Expression<Option<ast::TypeConstraint>>> = {
     <l:Expression> => vec![l],
 };
 
-Expression: ast::Expression<Option<ast::TypeConstraint>> = {
+Expression: ast::Expression<ast::TypeConstraint> = {
     <variable:Identifier> => ast::Expression {
         kind: ast::ExpressionKind::VariableAccess(variable),
-        type_: None
+        type_: ast::TypeConstraint::Unknown
     },
     <target:Expression> "." <name:Identifier> => ast::Expression {
         kind: ast::ExpressionKind::FieldAccess(Box::new(target), name),
-        type_: None
+        type_: ast::TypeConstraint::Unknown
     },
     <target:Expression> "(" <arguments:CallArguments?> ")" => ast::Expression {
         kind: ast::ExpressionKind::Call(Box::new(target), arguments.unwrap_or_default()),
-        type_: None
+        type_: ast::TypeConstraint::Unknown
     },
     <literal:Literal> => ast::Expression {
         kind: ast::ExpressionKind::Literal(literal),
-        type_: None
+        type_: ast::TypeConstraint::Unknown
     }
 }
-
-Statement: ast::Statement<Option<ast::TypeConstraint>> = {
+Statement: ast::Statement<ast::TypeConstraint> = {
     <expression:Expression> ";" => ast::Statement::Expression(expression)
 }
 
@@ -54,14 +53,14 @@ TypeConstraint: ast::TypeConstraint = {
     <name:Identifier> => ast::TypeConstraint::Named(name)
 };
 
-FunctionArgument: ast::FunctionArgument<Option<ast::TypeConstraint>> = {
+FunctionArgument: ast::FunctionArgument<ast::TypeConstraint> = {
     <name:Identifier> ":" <type_:TypeConstraint> => ast::FunctionArgument {
         name,
-        type_: Some(type_)
+        type_
     }
 }
 
-FunctionArguments: Vec<ast::FunctionArgument<Option<ast::TypeConstraint>>> = {
+FunctionArguments: Vec<ast::FunctionArgument<ast::TypeConstraint>> = {
     <mut l:FunctionArguments> "," <r:FunctionArgument> => {
         l.push(r);
 
@@ -70,14 +69,15 @@ FunctionArguments: Vec<ast::FunctionArgument<Option<ast::TypeConstraint>>> = {
     <l:FunctionArgument> => vec![l],
 }
 
-FunctionPrototype: ast::FunctionPrototype<Option<ast::TypeConstraint>> = {
-    "fn" <name:Identifier> "(" <arguments:FunctionArguments?> ","? ")" => ast::FunctionPrototype {
+FunctionPrototype: ast::FunctionPrototype<ast::TypeConstraint> = {
+    "fn" <name:Identifier> "(" <arguments:FunctionArguments?> ","? ")" ":" <return_type:TypeConstraint> => ast::FunctionPrototype {
         name,
         arguments: arguments.unwrap_or_default(),
+        return_type
     }
 }
 
-Function: ast::Function<UncheckedFunctionType, Option<ast::TypeConstraint>> = {
+Function: ast::Function<UncheckedFunctionType, ast::TypeConstraint> = {
     <prototype:FunctionPrototype> "{" <statements:(<Statement>)*> "}" => ast::Function { 
         type_: UncheckedFunctionType::new(UncheckedFunctionTypeKind::Statements(statements)),
         prototype
@@ -90,7 +90,7 @@ Function: ast::Function<UncheckedFunctionType, Option<ast::TypeConstraint>> = {
     }
 }
 
-Class: ast::Class<UncheckedClassType, UncheckedFunctionType, Option<ast::TypeConstraint>> = {
+Class: ast::Class<UncheckedClassType, UncheckedFunctionType, ast::TypeConstraint> = {
     "class" <name:Identifier> "{"
         <functions:(<Function>)*>
     "}" => ast::Class {
@@ -100,11 +100,11 @@ Class: ast::Class<UncheckedClassType, UncheckedFunctionType, Option<ast::TypeCon
     }
 }
 
-Declaration: ast::Declaration<UncheckedClassType, UncheckedFunctionType, Option<ast::TypeConstraint>> = {
+Declaration: ast::Declaration<UncheckedClassType, UncheckedFunctionType, ast::TypeConstraint> = {
     <class:Class> => ast::Declaration::Class(class),
 }
 
-pub SourceFile: ast::SourceFile<UncheckedClassType, UncheckedFunctionType, Option<ast::TypeConstraint>> = { 
+pub SourceFile: ast::SourceFile<UncheckedClassType, UncheckedFunctionType, ast::TypeConstraint> = { 
     <declarations:(<Declaration>)*> => ast::SourceFile {
         declarations
     }

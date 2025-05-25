@@ -10,4 +10,4 @@ pub mod function;
 
 pub type TypedAst = ast::SourceFile<ClassType, FunctionType, ExpressionType>;
 pub type UntypedAst =
-    ast::SourceFile<UncheckedClassType, UncheckedFunctionType, Option<ast::TypeConstraint>>;
+    ast::SourceFile<UncheckedClassType, UncheckedFunctionType, ast::TypeConstraint>;
