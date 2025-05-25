@@ -26,13 +26,13 @@ fn main() {
     let source = "
         class MyClass {
             #[extern(\"println\")]
-            fn printline(argument: string): unit;
+            static fn printline(argument: string): unit;
 
-            fn test(): string {
+            static fn test(): string {
                 return \"this is a return value\";
             }
 
-            fn main(): unit {
+            static fn main(): unit {
                 MyClass.printline(\"henlo\");
                 MyClass.printline(MyClass.test());
             }

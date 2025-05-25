@@ -134,6 +134,7 @@ impl<'ids> DefinitionsChecker<'ids> {
                 })
                 .collect(),
             return_type: self.type_constraint_to_type(function.prototype.return_type),
+            static_: function.prototype.static_,
         };
 
         (

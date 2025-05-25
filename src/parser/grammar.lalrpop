@@ -73,10 +73,11 @@ FunctionArguments: Vec<ast::FunctionArgument<ast::TypeConstraint>> = {
 }
 
 FunctionPrototype: ast::FunctionPrototype<ast::TypeConstraint> = {
-    "fn" <name:Identifier> "(" <arguments:FunctionArguments?> ","? ")" ":" <return_type:TypeConstraint> => ast::FunctionPrototype {
+     <static_:"static"?> "fn" <name:Identifier> "(" <arguments:FunctionArguments?> ","? ")" ":" <return_type:TypeConstraint> => ast::FunctionPrototype {
         name,
         arguments: arguments.unwrap_or_default(),
-        return_type
+        return_type,
+        static_: static_.is_some()
     }
 }
 

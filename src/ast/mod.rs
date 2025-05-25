@@ -73,6 +73,7 @@ pub struct FunctionPrototype<TExpression: NodeType> {
     pub name: Identifier,
     pub arguments: Vec<FunctionArgument<TExpression>>,
     pub return_type: TExpression,
+    pub static_: bool,
 }
 
 #[derive(Debug)]
