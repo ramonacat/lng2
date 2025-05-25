@@ -1,3 +1,4 @@
+mod object;
 mod scope;
 
 use std::collections::HashMap;
@@ -9,6 +10,7 @@ use inkwell::{
     types::BasicType,
     values::FunctionValue,
 };
+use object::{Object, ObjectFunctions, Value};
 use scope::Scope;
 
 use crate::{
@@ -16,7 +18,6 @@ use crate::{
     ast::{self, Class, Expression, Function},
     identifier::{Identifier, Identifiers},
     module::{CompilerServices, ModuleCompiler},
-    object::{self, Object, ObjectFunctions, Value},
     types::{
         TypedAst,
         class::ClassType,
@@ -400,7 +401,7 @@ impl<'ctx> ModuleGenerator<'ctx> {
         let mut module_compiler = ModuleCompiler::new(context, module);
         // TODO these should be in a separate runtime module, and we should just link them in to
         // the modules that need 'em
-        let object_functions = crate::object::generate_object_functions(&mut module_compiler);
+        let object_functions = object::generate_object_functions(&mut module_compiler);
 
         Self {
             module_compiler,

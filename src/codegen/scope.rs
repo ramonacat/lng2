@@ -1,6 +1,8 @@
 use std::collections::HashMap;
 
-use crate::{identifier::Identifier, object::Value};
+use crate::identifier::Identifier;
+
+use super::object::Value;
 
 pub struct Scope<'ctx, 'class> {
     variables: HashMap<Identifier, Value<'ctx, 'class>>,

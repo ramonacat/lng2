@@ -4,7 +4,6 @@ mod codegen;
 mod error;
 mod identifier;
 mod module;
-mod object;
 mod parser;
 mod stdlib;
 mod typecheck;
