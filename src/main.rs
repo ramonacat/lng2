@@ -29,8 +29,13 @@ fn main() {
             #[extern(\"println\")]
             fn printline(argument: string): unit;
 
+            fn test(): string {
+                return \"this is a return value\";
+            }
+
             fn main(): unit {
                 MyClass.printline(\"henlo\");
+                MyClass.printline(MyClass.test());
             }
         }
     ";

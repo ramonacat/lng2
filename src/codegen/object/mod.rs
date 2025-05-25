@@ -180,12 +180,12 @@ impl<'ctx, 'a> Field<'ctx, 'a> {
         Value::IndirectCallable(self.type_.into_function_type(), value.into_pointer_value())
     }
 
-    pub(crate) fn build_call(
+    pub(crate) fn build_call<'class>(
         &self,
-        arguments: Vec<Value>,
+        arguments: Vec<Value<'ctx, 'class>>,
         builder: &Builder<'ctx>,
-        context: FunctionCompilerContext<'ctx, '_, '_>,
-    ) {
+        context: FunctionCompilerContext<'ctx, 'class, '_>,
+    ) -> Value<'ctx, 'class> {
         // TODO ensure we have the correct function signature here
         // TODO handle the return value
         let function_pointer = self.build_read_value(builder, context);
@@ -210,9 +210,21 @@ impl<'ctx, 'a> Field<'ctx, 'a> {
             Value::IndirectCallable(type_, value) => (type_, value),
         };
 
-        builder
+        let result = builder
             .build_indirect_call(function_type, function_pointer, &arguments, "call_result")
             .unwrap();
+
+        // TODO this will awfully break once there are any types beside string & unit
+        if self.type_.into_function_type().get_return_type().is_some() {
+            Value::String(
+                result
+                    .try_as_basic_value()
+                    .unwrap_left()
+                    .into_pointer_value(),
+            )
+        } else {
+            Value::None
+        }
     }
 }
 

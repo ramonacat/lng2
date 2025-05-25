@@ -52,6 +52,7 @@ pub struct Expression<TExpression: NodeType> {
 #[derive(Debug)]
 pub enum Statement<TExpression: NodeType> {
     Expression(Expression<TExpression>),
+    Return(Expression<TExpression>),
 }
 
 #[derive(Debug, Clone, Copy)]

@@ -100,6 +100,7 @@ impl<'ids> DefinitionsChecker<'ids> {
             Statement::Expression(expression) => {
                 Statement::Expression(self.check_expression(expression))
             }
+            Statement::Return(expression) => Statement::Return(self.check_expression(expression)),
         }
     }
 
@@ -110,6 +111,26 @@ impl<'ids> DefinitionsChecker<'ids> {
     ) -> crate::ast::Expression<ExpressionType> {
         match expression.kind {
             crate::ast::ExpressionKind::Call(expression, arguments) => Expression {
+                type_: ExpressionType::new(match &expression.type_ {
+                    ast::TypeConstraint::Named(identifier)
+                        if self.identifiers.resolve(*identifier) == "string" =>
+                    {
+                        ExpressionTypeKind::String
+                    }
+                    ast::TypeConstraint::Named(identifier)
+                        if self.identifiers.resolve(*identifier) == "unit" =>
+                    {
+                        // TODO this should be ::Unit
+                        ExpressionTypeKind::Todo
+                    }
+                    ast::TypeConstraint::Named(identifier) => {
+                        todo!("{}", self.identifiers.resolve(*identifier));
+                    }
+                    ast::TypeConstraint::Unknown => {
+                        // TODO we should infer the expression type or fail with an error here
+                        ExpressionTypeKind::Todo
+                    }
+                }),
                 kind: ExpressionKind::Call(
                     Box::new(self.check_expression(*expression)),
                     arguments
@@ -117,7 +138,6 @@ impl<'ids> DefinitionsChecker<'ids> {
                         .map(|x| self.check_expression(x))
                         .collect(),
                 ),
-                type_: ExpressionType::new(ExpressionTypeKind::Todo),
             },
             crate::ast::ExpressionKind::VariableAccess(identifier) => Expression {
                 kind: ExpressionKind::VariableAccess(identifier),

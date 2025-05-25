@@ -45,8 +45,10 @@ Expression: ast::Expression<ast::TypeConstraint> = {
         type_: ast::TypeConstraint::Unknown
     }
 }
+
 Statement: ast::Statement<ast::TypeConstraint> = {
-    <expression:Expression> ";" => ast::Statement::Expression(expression)
+    <expression:Expression> ";" => ast::Statement::Expression(expression),
+    "return" <expression:Expression> ";" => ast::Statement::Return(expression),
 }
 
 TypeConstraint: ast::TypeConstraint = {

@@ -169,9 +169,12 @@ fn print_statement<T: NodeType>(
     match statement {
         super::Statement::Expression(expression) => {
             print_to!(printer, "");
-
             print_expression(printer, identifiers, expression)?;
-
+            writeln!(printer.target, ";")?;
+        }
+        super::Statement::Return(expression) => {
+            print_to!(printer, "return ");
+            print_expression(printer, identifiers, expression)?;
             writeln!(printer.target, ";")?;
         }
     }

@@ -43,8 +43,17 @@ pub fn make_fn_type<'ctx>(
         })
         .collect();
 
-    context.context().void_type().fn_type(&arguments[..], false)
+    match &prototype.return_type.kind() {
+        crate::types::expression::ExpressionTypeKind::Todo => {
+            context.context().void_type().fn_type(&arguments[..], false)
+        }
+        crate::types::expression::ExpressionTypeKind::String => context
+            .context()
+            .ptr_type(*ADDRESS_SPACE)
+            .fn_type(&arguments[..], false),
+    }
 }
+
 pub fn codegen(ast: &TypedAst, identifiers: &Identifiers) {
     let context = Context::create();
     let module_generator = ModuleGenerator::new(&context, identifiers);
@@ -207,17 +216,38 @@ where
                     .append_basic_block(context.function_value, "entry");
                 builder.position_at_end(entry_block);
 
+                let mut return_built = false;
+
                 for statement in statements {
                     match statement {
                         ast::Statement::Expression(expression) => {
                             self.compile_expression(expression, &scope, &builder, context);
                         }
+                        ast::Statement::Return(expression) => {
+                            let value =
+                                self.compile_expression(expression, &scope, &builder, context);
+
+                            // TODO verify that all code paths return compatible types
+                            match value {
+                                Value::None => todo!(),
+                                Value::Callable(_) => todo!(),
+                                Value::Field(_) => todo!(),
+                                Value::Class(_) => todo!(),
+                                Value::String(string) => {
+                                    builder.build_return(Some(&string)).unwrap();
+                                    return_built = true;
+                                }
+                                Value::IndirectCallable(_, _) => todo!(),
+                            }
+                        }
                     }
                 }
 
-                // TODO we have to return the actual value from a return statement here, and verify
-                // that this we always have one (or never have one if the type is void)
-                builder.build_return(None).unwrap();
+                // TODO we have to do some real control flow analysis, this will break as soon as
+                // the language supports if statements
+                if !return_built {
+                    builder.build_return(None).unwrap();
+                }
 
                 (context.function_value, scope.into_parent().unwrap())
             }
@@ -260,19 +290,17 @@ where
         match &expression.kind {
             ast::ExpressionKind::Call(expression, arguments) => {
                 // TODO differentiate between static and non-static methods
-                let expression = self.compile_expression(expression, scope, builder, context);
+                let built_expression = self.compile_expression(expression, scope, builder, context);
                 let arguments: Vec<_> = arguments
                     .iter()
                     .map(|x| self.compile_expression(x, scope, builder, context))
                     .collect();
 
-                let Value::Field(field) = expression else {
+                let Value::Field(field) = built_expression else {
                     todo!();
                 };
 
-                field.build_call(arguments, builder, context);
-
-                Value::None
+                field.build_call(arguments, builder, context)
             }
             ast::ExpressionKind::VariableAccess(identifier) => *scope.get(*identifier).unwrap(),
             ast::ExpressionKind::FieldAccess(target, field) => {
