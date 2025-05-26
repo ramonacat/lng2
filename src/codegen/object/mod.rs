@@ -28,7 +28,7 @@ pub enum Storage<'ctx, 'class> {
 #[derive(Debug, Clone, Copy)]
 pub enum ValueType<'ctx, 'class> {
     String,
-    Class(&'class ClassDeclaration<'ctx, 'class>),
+    Class(&'class ClassDeclaration<'ctx>),
     Callable(FunctionType<'ctx>),
 }
 

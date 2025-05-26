@@ -333,15 +333,12 @@ impl<'class> ClassCompilers<'class> {
 }
 
 #[derive(Debug)]
-pub struct ClassDeclaration<'ctx, 'class> {
+pub struct ClassDeclaration<'ctx> {
     descriptor: Object<'ctx>,
     field_indices: HashMap<Identifier, u64>,
-    // TODO we really should not store this here, the instance created should have all the needed
-    // information
-    class: &'class Class<ClassType, FunctionType, ExpressionType>,
 }
 
-impl<'ctx, 'class> ClassDeclaration<'ctx, 'class> {
+impl<'ctx, 'class> ClassDeclaration<'ctx> {
     fn new(
         // TODO pass ClassCompilerContext here as an arg instead of all the things?
         class: &'class Class<ClassType, FunctionType, ExpressionType>,
@@ -399,7 +396,6 @@ impl<'ctx, 'class> ClassDeclaration<'ctx, 'class> {
         Self {
             descriptor,
             field_indices,
-            class,
         }
     }
 
@@ -470,16 +466,16 @@ impl<'ctx> ModuleGenerator<'ctx> {
                                 compiler_services,
                             );
 
-                            class_declarations.insert(class.type_.id(), class_declaration);
+                            class_declarations.insert(class.type_.id(), (class.name, class_declaration));
                         }
                     }
                 }
 
                 let mut scope: Scope<'ctx, '_> = Scope::new();
-                for class in class_declarations.values() {
+                for (name, declaration) in class_declarations.values() {
                     scope.set(
-                        class.class.name,
-                        StoredValue::new(Storage::Builtin, ValueType::Class(class)),
+                        *name,
+                        StoredValue::new(Storage::Builtin, ValueType::Class(declaration)),
                     );
                 }
 
