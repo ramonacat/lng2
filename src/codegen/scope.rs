@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use crate::identifier::Identifier;
 
-use super::object::StoredValue;
+use super::stored_value::StoredValue;
 
 pub struct Scope<'ctx, 'class> {
     variables: HashMap<Identifier, StoredValue<'ctx, 'class>>,

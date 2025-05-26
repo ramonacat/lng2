@@ -1,94 +1,22 @@
 mod representation;
 
+use crate::codegen::stored_value::Storage;
+use crate::codegen::stored_value::StoredValue;
+use crate::codegen::stored_value::ValueType;
 use crate::codegen::{CompilerContext, make_fn_type};
 use inkwell::types::AnyType;
 use inkwell::types::AnyTypeEnum;
-use inkwell::types::FunctionType;
 use inkwell::values::BasicValueEnum;
-use inkwell::values::GlobalValue;
 use inkwell::values::PointerValue;
 use inkwell::{builder::Builder, types::BasicType, values::BasicValue};
 use representation::ObjectFieldKind;
 
 use crate::{
     ADDRESS_SPACE,
-    codegen::{AnyCompilerContext as _, ClassDeclaration, FunctionCompilerContext},
+    codegen::{AnyCompilerContext as _, FunctionCompilerContext},
     identifier::Identifier,
     module::{CompilerServices, ModuleCompiler},
 };
-
-#[derive(Debug, Clone, Copy)]
-pub enum Storage<'ctx, 'class> {
-    Field(Field<'ctx, 'class>),
-    Heap(PointerValue<'ctx>),
-    Global(GlobalValue<'ctx>),
-    Builtin,
-}
-
-#[derive(Debug, Clone, Copy)]
-pub enum ValueType<'ctx, 'class> {
-    String,
-    Class(&'class ClassDeclaration<'ctx>),
-    Callable(FunctionType<'ctx>),
-}
-
-#[derive(Debug, Clone, Copy)]
-pub struct StoredValue<'ctx, 'class> {
-    storage: Storage<'ctx, 'class>,
-    type_: ValueType<'ctx, 'class>,
-}
-
-impl<'ctx, 'class> StoredValue<'ctx, 'class> {
-    pub fn into_basic_value_enum(self) -> BasicValueEnum<'ctx> {
-        match self.storage {
-            Storage::Field(_) => todo!(),
-            Storage::Heap(pointer_value) => pointer_value.as_basic_value_enum(),
-            Storage::Global(global) => global.as_basic_value_enum(),
-            Storage::Builtin => todo!(),
-        }
-    }
-
-    pub(crate) fn build_call(
-        &self,
-        arguments: Vec<Self>,
-        builder: &Builder<'ctx>,
-        context: FunctionCompilerContext<'ctx, 'class, 'class>,
-    ) -> Option<Self> {
-        match self.storage {
-            Storage::Field(field) => field.build_call(arguments, builder, context),
-            Storage::Heap(_) => todo!(),
-            Storage::Global(_) => todo!(),
-            Storage::Builtin => todo!(),
-        }
-    }
-
-    pub(crate) fn field_access(
-        &self,
-        field: Identifier,
-        builder: &Builder<'ctx>,
-        context: FunctionCompilerContext<'ctx, 'class, 'class>,
-    ) -> Option<Self> {
-        match &self.storage {
-            Storage::Field(_) => todo!(),
-            Storage::Heap(_) => todo!(),
-            Storage::Global(_) => todo!(),
-            Storage::Builtin => match &self.type_ {
-                ValueType::String => todo!(),
-                ValueType::Class(class_declaration) => {
-                    Some(class_declaration.field_access(field, builder, context))
-                }
-                ValueType::Callable(_) => todo!(),
-            },
-        }
-    }
-
-    pub(crate) const fn new(
-        storage: Storage<'ctx, 'class>,
-        type_: ValueType<'ctx, 'class>,
-    ) -> Self {
-        Self { storage, type_ }
-    }
-}
 
 #[derive(Debug)]
 pub struct FieldDeclaration<'ctx, 'class> {
@@ -241,10 +169,10 @@ impl<'ctx, 'a> Field<'ctx, 'a> {
             )
             .unwrap();
 
-        StoredValue {
-            storage: Storage::Heap(value.into_pointer_value()),
-            type_: ValueType::Callable(self.type_.into_function_type()),
-        }
+        StoredValue::new(
+            Storage::Heap(value.into_pointer_value()),
+            ValueType::Callable(self.type_.into_function_type()),
+        )
     }
 
     pub(crate) fn build_call<'class>(
@@ -261,7 +189,8 @@ impl<'ctx, 'a> Field<'ctx, 'a> {
             .map(|x| x.into_basic_value_enum().into())
             .collect::<Vec<_>>();
 
-        let (function_type, function_pointer) = match &function_pointer.type_ {
+        // TODO function_pointer.into_callable()???
+        let (function_type, function_pointer) = match &function_pointer.type_() {
             ValueType::String => todo!(),
             ValueType::Class(_) => todo!(),
             ValueType::Callable(function_type) => (
@@ -278,15 +207,15 @@ impl<'ctx, 'a> Field<'ctx, 'a> {
 
         // TODO this will awfully break once there are any types beside string & unit
         if self.type_.into_function_type().get_return_type().is_some() {
-            Some(StoredValue {
-                storage: Storage::Heap(
+            Some(StoredValue::new(
+                Storage::Heap(
                     result
                         .try_as_basic_value()
                         .unwrap_left()
                         .into_pointer_value(),
                 ),
-                type_: ValueType::String,
-            })
+                ValueType::String,
+            ))
         } else {
             None
         }
@@ -415,7 +344,7 @@ impl<'ctx> ObjectFunctions<'ctx> {
         fields_field: PointerValue<'ctx>,
     ) {
         for (index, field) in fields.iter().enumerate() {
-            let (value, value_kind) = match &field.value.type_ {
+            let (value, value_kind) = match &field.value.type_() {
                 ValueType::String => todo!(),
                 ValueType::Class(_) => todo!(),
                 ValueType::Callable(_) => (

@@ -1,6 +1,10 @@
 mod object;
 mod scope;
+mod stored_value;
 
+use crate::codegen::stored_value::Storage;
+use crate::codegen::stored_value::StoredValue;
+use crate::codegen::stored_value::ValueType;
 use std::collections::HashMap;
 
 use inkwell::{
@@ -10,7 +14,7 @@ use inkwell::{
     types::BasicType,
     values::FunctionValue,
 };
-use object::{Object, ObjectFunctions, Storage, StoredValue, ValueType};
+use object::{Object, ObjectFunctions};
 use scope::Scope;
 
 use crate::{
@@ -312,7 +316,7 @@ where
 
                     Some(StoredValue::new(
                         Storage::Global(global_string),
-                        object::ValueType::String,
+                        ValueType::String,
                     ))
                 }
             },
@@ -410,7 +414,7 @@ impl<'ctx, 'class> ClassDeclaration<'ctx> {
             self.descriptor
                 .get_field(usize::try_from(*index).unwrap(), compiler_context, builder);
 
-        StoredValue::new(Storage::Field(field_value), object::ValueType::String)
+        StoredValue::new(Storage::Field(field_value), ValueType::String)
     }
 }
 
@@ -466,7 +470,8 @@ impl<'ctx> ModuleGenerator<'ctx> {
                                 compiler_services,
                             );
 
-                            class_declarations.insert(class.type_.id(), (class.name, class_declaration));
+                            class_declarations
+                                .insert(class.type_.id(), (class.name, class_declaration));
                         }
                     }
                 }
