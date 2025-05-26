@@ -403,7 +403,6 @@ impl<'ctx, 'class> ClassDeclaration<'ctx, 'class> {
         }
     }
 
-    #[allow(unused)]
     fn field_access(
         &'class self,
         field: Identifier,
