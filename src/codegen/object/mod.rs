@@ -37,7 +37,65 @@ impl<'ctx> Object<'ctx> {
         builder: &Builder<'ctx>,
     ) -> Field<'ctx, '_> {
         // TODO verify that the field_index is in bounds
-        let gep = builder
+        let field_count_pointer = builder
+            .build_struct_gep(
+                context.object_functions().object_type,
+                self.self_,
+                1,
+                "field_count",
+            )
+            .unwrap();
+
+        let field_count = builder
+            .build_load(
+                context.context().i64_type(),
+                field_count_pointer,
+                "field_count",
+            )
+            .unwrap();
+
+        let field_index_too_great = builder
+            .build_int_compare(
+                inkwell::IntPredicate::UGE,
+                context
+                    .context()
+                    .i64_type()
+                    .const_int(field_index as u64, false),
+                field_count.into_int_value(),
+                "is_field_index_too_great",
+            )
+            .unwrap();
+
+        let then_block = context
+            .context()
+            .append_basic_block(context.function_value, "then");
+
+        let else_block = context
+            .context()
+            .append_basic_block(context.function_value, "else");
+
+        builder
+            .build_conditional_branch(field_index_too_great, then_block, else_block)
+            .unwrap();
+
+        builder.position_at_end(then_block);
+        builder
+            .build_direct_call(
+                context.fatal_error(),
+                &[context
+                    .context()
+                    .i64_type()
+                    .const_int(2, false)
+                    .as_basic_value_enum()
+                    .into()],
+                "fatal_error",
+            )
+            .unwrap();
+        builder.build_unreachable().unwrap();
+
+        builder.position_at_end(else_block);
+
+        let fields_pointer = builder
             .build_struct_gep(
                 context.object_functions().object_type,
                 self.self_,
@@ -46,11 +104,19 @@ impl<'ctx> Object<'ctx> {
             )
             .unwrap();
 
+        let fields = builder
+            .build_load(
+                context.context().ptr_type(*ADDRESS_SPACE),
+                fields_pointer,
+                "fields",
+            )
+            .unwrap();
+
         let field = unsafe {
             builder
                 .build_gep(
                     context.object_functions().fields_type,
-                    gep,
+                    fields.into_pointer_value(),
                     &[context
                         .context()
                         .i64_type()
@@ -141,7 +207,16 @@ impl<'ctx, 'a> Field<'ctx, 'a> {
             .unwrap();
         builder.position_at_end(then_block);
         builder
-            .build_direct_call(context.fatal_error(), &[], "fatal_error")
+            .build_direct_call(
+                context.fatal_error(),
+                &[context
+                    .context()
+                    .i64_type()
+                    .const_int(1, false)
+                    .as_basic_value_enum()
+                    .into()],
+                "fatal_error",
+            )
             .unwrap();
         builder.build_unreachable().unwrap();
 
@@ -312,6 +387,16 @@ impl<'ctx> ObjectFunctions<'ctx> {
         let fields_field = builder
             .build_struct_gep(self.object_type, global.as_pointer_value(), 0, "fields_ptr")
             .unwrap();
+
+        let field_count_field = builder
+            .build_struct_gep(
+                self.object_type,
+                global.as_pointer_value(),
+                1,
+                "fields_count_ptr",
+            )
+            .unwrap();
+
         let fields_len = u32::try_from(fields.len()).unwrap();
         let fields_value = compiler_context.module.add_global(
             self.fields_type.array_type(fields_len),
@@ -320,9 +405,24 @@ impl<'ctx> ObjectFunctions<'ctx> {
         );
         fields_value.set_initializer(&self.fields_type.array_type(fields_len).const_zero());
 
-        self.fill_fields(fields, compiler_context, &builder, fields_field);
+        self.fill_fields(
+            fields,
+            compiler_context,
+            &builder,
+            fields_value.as_pointer_value(),
+        );
 
         builder.build_store(fields_field, fields_value).unwrap();
+        builder
+            .build_store(
+                field_count_field,
+                compiler_context
+                    .context()
+                    .i64_type()
+                    .const_int(u64::from(fields_len), false),
+            )
+            .unwrap();
+
         builder.build_return(None).unwrap();
 
         compiler_services.add_global_construtor(

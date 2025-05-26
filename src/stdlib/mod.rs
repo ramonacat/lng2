@@ -8,8 +8,10 @@ extern "C" fn printline(line: *const c_char) {
 }
 
 // TODO print some actual useful information here (detailed error message, stacktrace, etc.)
-extern "C" fn fatal_error() {
-    println!("fatal error!");
+// The marker is a hack so we know which place is throwing the error without doing the actual work
+// of showing useful errors.
+extern "C" fn fatal_error(marker: u64) {
+    println!("fatal error! {marker}");
 
     std::process::exit(1);
 }

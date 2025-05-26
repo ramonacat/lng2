@@ -198,8 +198,6 @@ impl<'ids> DefinitionsChecker<'ids> {
                 let type_ = match &checked_expression.type_.kind() {
                     ExpressionTypeKind::String => todo!(),
                     ExpressionTypeKind::Class(class_id) => {
-                        dbg!(scope, class_id);
-
                         let class_type = scope.get_class(*class_id).unwrap();
                         let field = class_type.get_field(identifier).unwrap();
                         let (arguments, return_type) = match field {

@@ -446,7 +446,9 @@ impl<'ctx> ModuleGenerator<'ctx> {
             .build(|context, module, compiler_services| {
                 let fatal_error = module.add_function(
                     "fatal_error",
-                    context.void_type().fn_type(&[], false),
+                    context
+                        .void_type()
+                        .fn_type(&[context.i64_type().into()], false),
                     None,
                 );
 
