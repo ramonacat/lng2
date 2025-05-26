@@ -10,7 +10,7 @@ use inkwell::{
     types::BasicType,
     values::FunctionValue,
 };
-use object::{Object, ObjectFunctions, Value};
+use object::{Object, ObjectFunctions, Storage, StoredValue, ValueType};
 use scope::Scope;
 
 use crate::{
@@ -228,21 +228,15 @@ where
                             self.compile_expression(expression, &scope, &builder, context);
                         }
                         ast::Statement::Return(expression) => {
-                            let value =
-                                self.compile_expression(expression, &scope, &builder, context);
+                            let value = self
+                                .compile_expression(expression, &scope, &builder, context)
+                                .unwrap();
 
                             // TODO verify that all code paths return compatible types
-                            match value {
-                                Value::None => todo!(),
-                                Value::Callable(_) => todo!(),
-                                Value::Field(_) => todo!(),
-                                Value::Class(_) => todo!(),
-                                Value::String(string) => {
-                                    builder.build_return(Some(&string)).unwrap();
-                                    return_built = true;
-                                }
-                                Value::IndirectCallable(_, _) => todo!(),
-                            }
+                            builder
+                                .build_return(Some(&value.into_basic_value_enum()))
+                                .unwrap();
+                            return_built = true;
                         }
                     }
                 }
@@ -290,36 +284,36 @@ where
         scope: &Scope<'ctx, 'class>,
         builder: &Builder<'ctx>,
         context: FunctionCompilerContext<'ctx, 'class, 'class>,
-    ) -> Value<'ctx, 'class> {
+    ) -> Option<StoredValue<'ctx, 'class>> {
         match &expression.kind {
             ast::ExpressionKind::Call(expression, arguments) => {
                 // TODO differentiate between static and non-static methods
-                let built_expression = self.compile_expression(expression, scope, builder, context);
+                let built_expression = self
+                    .compile_expression(expression, scope, builder, context)
+                    .unwrap();
                 let arguments: Vec<_> = arguments
                     .iter()
-                    .map(|x| self.compile_expression(x, scope, builder, context))
+                    .map(|x| self.compile_expression(x, scope, builder, context).unwrap())
                     .collect();
 
-                let Value::Field(field) = built_expression else {
-                    todo!();
-                };
-
-                field.build_call(arguments, builder, context)
+                built_expression.build_call(arguments, builder, context)
             }
-            ast::ExpressionKind::VariableAccess(identifier) => *scope.get(*identifier).unwrap(),
+            ast::ExpressionKind::VariableAccess(identifier) => scope.get(*identifier).copied(),
             ast::ExpressionKind::FieldAccess(target, field) => {
-                let Value::Class(class) = self.compile_expression(target, scope, builder, context)
-                else {
-                    todo!();
-                };
+                let value = self
+                    .compile_expression(target, scope, builder, context)
+                    .unwrap();
 
-                class.field_access(*field, builder, context)
+                value.field_access(*field, builder, context)
             }
             ast::ExpressionKind::Literal(literal) => match literal {
                 ast::Literal::String(value) => {
                     let global_string = builder.build_global_string_ptr(value, "literal").unwrap();
 
-                    Value::String(global_string.as_pointer_value())
+                    Some(StoredValue::new(
+                        Storage::Global(global_string),
+                        object::ValueType::String,
+                    ))
                 }
             },
         }
@@ -342,7 +336,8 @@ impl<'class> ClassCompilers<'class> {
 pub struct ClassDeclaration<'ctx, 'class> {
     descriptor: Object<'ctx>,
     field_indices: HashMap<Identifier, u64>,
-    #[allow(unused)]
+    // TODO we really should not store this here, the instance created should have all the needed
+    // information
     class: &'class Class<ClassType, FunctionType, ExpressionType>,
 }
 
@@ -385,7 +380,10 @@ impl<'ctx, 'class> ClassDeclaration<'ctx, 'class> {
         for (index, (function_ast, function)) in methods.iter().enumerate() {
             fields.push(object::FieldDeclaration {
                 name: function_ast.prototype.name,
-                value: Value::Callable(*function),
+                value: StoredValue::new(
+                    Storage::Global(function.as_global_value()),
+                    ValueType::Callable(function.get_type()),
+                ),
             });
             field_indices.insert(function_ast.prototype.name, index as u64);
             declared_functions.insert(function_ast.type_.id(), *function);
@@ -405,18 +403,19 @@ impl<'ctx, 'class> ClassDeclaration<'ctx, 'class> {
         }
     }
 
+    #[allow(unused)]
     fn field_access(
         &'class self,
         field: Identifier,
         builder: &Builder<'ctx>,
         compiler_context: FunctionCompilerContext<'ctx, '_, 'class>,
-    ) -> Value<'ctx, 'class> {
+    ) -> StoredValue<'ctx, 'class> {
         let index = self.field_indices.get(&field).unwrap();
-        let field =
+        let field_value =
             self.descriptor
                 .get_field(usize::try_from(*index).unwrap(), compiler_context, builder);
 
-        Value::Field(field)
+        StoredValue::new(Storage::Field(field_value), object::ValueType::String)
     }
 }
 
@@ -479,7 +478,10 @@ impl<'ctx> ModuleGenerator<'ctx> {
 
                 let mut scope: Scope<'ctx, '_> = Scope::new();
                 for class in class_declarations.values() {
-                    scope.set(class.class.name, Value::Class(class));
+                    scope.set(
+                        class.class.name,
+                        StoredValue::new(Storage::Builtin, ValueType::Class(class)),
+                    );
                 }
 
                 let mut classes = ClassCompilers::new();

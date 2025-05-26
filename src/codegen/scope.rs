@@ -2,10 +2,10 @@ use std::collections::HashMap;
 
 use crate::identifier::Identifier;
 
-use super::object::Value;
+use super::object::StoredValue;
 
 pub struct Scope<'ctx, 'class> {
-    variables: HashMap<Identifier, Value<'ctx, 'class>>,
+    variables: HashMap<Identifier, StoredValue<'ctx, 'class>>,
     parent: Option<Box<Scope<'ctx, 'class>>>,
 }
 
@@ -28,11 +28,11 @@ impl<'ctx, 'class> Scope<'ctx, 'class> {
         self.parent.map(|x| *x)
     }
 
-    pub(crate) fn set(&mut self, name: Identifier, value: Value<'ctx, 'class>) {
+    pub(crate) fn set(&mut self, name: Identifier, value: StoredValue<'ctx, 'class>) {
         self.variables.insert(name, value);
     }
 
-    pub(crate) fn get(&self, identifier: Identifier) -> Option<&Value<'ctx, 'class>> {
+    pub(crate) fn get(&self, identifier: Identifier) -> Option<&StoredValue<'ctx, 'class>> {
         self.variables
             .get(&identifier)
             .or_else(|| self.parent.as_ref().and_then(|x| x.get(identifier)))

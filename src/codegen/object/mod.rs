@@ -5,12 +5,9 @@ use inkwell::types::AnyType;
 use inkwell::types::AnyTypeEnum;
 use inkwell::types::FunctionType;
 use inkwell::values::BasicValueEnum;
+use inkwell::values::GlobalValue;
 use inkwell::values::PointerValue;
-use inkwell::{
-    builder::Builder,
-    types::BasicType,
-    values::{BasicValue, FunctionValue},
-};
+use inkwell::{builder::Builder, types::BasicType, values::BasicValue};
 use representation::ObjectFieldKind;
 
 use crate::{
@@ -20,22 +17,84 @@ use crate::{
     module::{CompilerServices, ModuleCompiler},
 };
 
-// TODO we should really only have an Object and Primitive in terms of kinds of values here, the
-// rest should be handled by builtin magical objects
 #[derive(Debug, Clone, Copy)]
-pub enum Value<'ctx, 'class> {
-    None,
-    Callable(FunctionValue<'ctx>),
+pub enum Storage<'ctx, 'class> {
     Field(Field<'ctx, 'class>),
+    Heap(PointerValue<'ctx>),
+    Global(GlobalValue<'ctx>),
+    Builtin,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum ValueType<'ctx, 'class> {
+    String,
+    #[allow(unused)]
     Class(&'class ClassDeclaration<'ctx, 'class>),
-    String(PointerValue<'ctx>),
-    IndirectCallable(FunctionType<'ctx>, PointerValue<'ctx>),
+    Callable(FunctionType<'ctx>),
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct StoredValue<'ctx, 'class> {
+    storage: Storage<'ctx, 'class>,
+    type_: ValueType<'ctx, 'class>,
+}
+
+impl<'ctx, 'class> StoredValue<'ctx, 'class> {
+    pub fn into_basic_value_enum(self) -> BasicValueEnum<'ctx> {
+        match self.storage {
+            Storage::Field(_) => todo!(),
+            Storage::Heap(pointer_value) => pointer_value.as_basic_value_enum(),
+            Storage::Global(global) => global.as_basic_value_enum(),
+            Storage::Builtin => todo!(),
+        }
+    }
+
+    pub(crate) fn build_call(
+        &self,
+        arguments: Vec<Self>,
+        builder: &Builder<'ctx>,
+        context: FunctionCompilerContext<'ctx, 'class, 'class>,
+    ) -> Option<Self> {
+        match self.storage {
+            Storage::Field(field) => field.build_call(arguments, builder, context),
+            Storage::Heap(_) => todo!(),
+            Storage::Global(_) => todo!(),
+            Storage::Builtin => todo!(),
+        }
+    }
+
+    pub(crate) fn field_access(
+        &self,
+        field: Identifier,
+        builder: &Builder<'ctx>,
+        context: FunctionCompilerContext<'ctx, 'class, 'class>,
+    ) -> Option<Self> {
+        match &self.storage {
+            Storage::Field(_) => todo!(),
+            Storage::Heap(_) => todo!(),
+            Storage::Global(_) => todo!(),
+            Storage::Builtin => match &self.type_ {
+                ValueType::String => todo!(),
+                ValueType::Class(class_declaration) => {
+                    Some(class_declaration.field_access(field, builder, context))
+                }
+                ValueType::Callable(_) => todo!(),
+            },
+        }
+    }
+
+    pub(crate) const fn new(
+        storage: Storage<'ctx, 'class>,
+        type_: ValueType<'ctx, 'class>,
+    ) -> Self {
+        Self { storage, type_ }
+    }
 }
 
 #[derive(Debug)]
 pub struct FieldDeclaration<'ctx, 'class> {
     pub name: Identifier,
-    pub value: Value<'ctx, 'class>,
+    pub value: StoredValue<'ctx, 'class>,
 }
 
 #[derive(Debug)]
@@ -111,7 +170,7 @@ impl<'ctx, 'a> Field<'ctx, 'a> {
         &self,
         builder: &Builder<'ctx>,
         context: FunctionCompilerContext<'ctx, '_, '_>,
-    ) -> Value<'ctx, '_> {
+    ) -> StoredValue<'ctx, '_> {
         // TODO instead of asserting and erroring out on non-callables, we should instead just
         // return a matching Value every time
         let value_kind_pointer = builder
@@ -183,37 +242,35 @@ impl<'ctx, 'a> Field<'ctx, 'a> {
             )
             .unwrap();
 
-        Value::IndirectCallable(self.type_.into_function_type(), value.into_pointer_value())
+        StoredValue {
+            storage: Storage::Heap(value.into_pointer_value()),
+            type_: ValueType::Callable(self.type_.into_function_type()),
+        }
     }
 
     pub(crate) fn build_call<'class>(
         &self,
-        arguments: Vec<Value<'ctx, 'class>>,
+        arguments: Vec<StoredValue<'ctx, 'class>>,
         builder: &Builder<'ctx>,
         context: FunctionCompilerContext<'ctx, 'class, '_>,
-    ) -> Value<'ctx, 'class> {
+    ) -> Option<StoredValue<'ctx, 'class>> {
         // TODO ensure we have the correct function signature here
         // TODO handle the return value
         let function_pointer = self.build_read_value(builder, context);
         let arguments = arguments
             .into_iter()
-            .map(|x| match x {
-                Value::None => todo!(),
-                Value::Callable(_) => todo!(),
-                Value::Field(_) => todo!(),
-                Value::Class(_) => todo!(),
-                Value::String(pointer) => pointer.as_basic_value_enum().into(),
-                Value::IndirectCallable(_, _) => todo!(),
-            })
+            .map(|x| x.into_basic_value_enum().into())
             .collect::<Vec<_>>();
 
-        let (function_type, function_pointer) = match function_pointer {
-            Value::None => todo!(),
-            Value::Callable(_) => todo!(),
-            Value::Field(_) => todo!(),
-            Value::Class(_) => todo!(),
-            Value::String(_) => todo!(),
-            Value::IndirectCallable(type_, value) => (type_, value),
+        let (function_type, function_pointer) = match &function_pointer.type_ {
+            ValueType::String => todo!(),
+            ValueType::Class(_) => todo!(),
+            ValueType::Callable(function_type) => (
+                *function_type,
+                function_pointer
+                    .into_basic_value_enum()
+                    .into_pointer_value(),
+            ),
         };
 
         let result = builder
@@ -222,14 +279,17 @@ impl<'ctx, 'a> Field<'ctx, 'a> {
 
         // TODO this will awfully break once there are any types beside string & unit
         if self.type_.into_function_type().get_return_type().is_some() {
-            Value::String(
-                result
-                    .try_as_basic_value()
-                    .unwrap_left()
-                    .into_pointer_value(),
-            )
+            Some(StoredValue {
+                storage: Storage::Heap(
+                    result
+                        .try_as_basic_value()
+                        .unwrap_left()
+                        .into_pointer_value(),
+                ),
+                type_: ValueType::String,
+            })
         } else {
-            Value::None
+            None
         }
     }
 }
@@ -356,13 +416,13 @@ impl<'ctx> ObjectFunctions<'ctx> {
         fields_field: PointerValue<'ctx>,
     ) {
         for (index, field) in fields.iter().enumerate() {
-            let (value, value_kind) = match field.value {
-                Value::Callable(function_value) => (function_value, ObjectFieldKind::Callable),
-                Value::None => todo!(),
-                Value::Class(_) => todo!(),
-                Value::Field(_) => todo!(),
-                Value::String(_) => todo!(),
-                Value::IndirectCallable(_, _) => todo!(),
+            let (value, value_kind) = match &field.value.type_ {
+                ValueType::String => todo!(),
+                ValueType::Class(_) => todo!(),
+                ValueType::Callable(_) => (
+                    field.value.into_basic_value_enum(),
+                    ObjectFieldKind::Callable,
+                ),
             };
 
             self.store_field(
@@ -378,14 +438,7 @@ impl<'ctx> ObjectFunctions<'ctx> {
                 compiler_context,
             );
 
-            self.store_field(
-                index,
-                1,
-                value.as_global_value().as_basic_value_enum(),
-                fields_field,
-                builder,
-                compiler_context,
-            );
+            self.store_field(index, 1, value, fields_field, builder, compiler_context);
 
             self.store_field(
                 index,

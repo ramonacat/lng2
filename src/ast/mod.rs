@@ -44,8 +44,6 @@ pub enum ExpressionKind<TExpression: NodeType> {
 #[derive(Debug)]
 pub struct Expression<TExpression: NodeType> {
     pub kind: ExpressionKind<TExpression>,
-    // TODO This will most likely be needed once there are like assignments and stuff
-    #[allow(unused)]
     pub type_: TExpression,
 }
 
