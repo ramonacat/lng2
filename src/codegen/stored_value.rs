@@ -27,14 +27,15 @@ pub struct StoredValue<'ctx, 'class> {
     storage: Storage<'ctx, 'class>,
     type_: ValueType<'ctx, 'class>,
 }
-impl<'ctx, 'class> StoredValue<'ctx, 'class> {
-    // TODO can we avoid this method, and pull the logic that needs it into StoredValue?
-    pub(crate) const fn type_(&self) -> ValueType<'ctx, 'class> {
-        self.type_
-    }
-}
 
 impl<'ctx, 'class> StoredValue<'ctx, 'class> {
+    pub(crate) const fn new(
+        storage: Storage<'ctx, 'class>,
+        type_: ValueType<'ctx, 'class>,
+    ) -> Self {
+        Self { storage, type_ }
+    }
+
     pub fn into_basic_value_enum(self) -> BasicValueEnum<'ctx> {
         match self.storage {
             Storage::Field(_) => todo!(),
@@ -78,10 +79,14 @@ impl<'ctx, 'class> StoredValue<'ctx, 'class> {
         }
     }
 
-    pub(crate) const fn new(
-        storage: Storage<'ctx, 'class>,
-        type_: ValueType<'ctx, 'class>,
-    ) -> Self {
-        Self { storage, type_ }
+    pub(crate) fn into_callable(self) -> (FunctionType<'ctx>, PointerValue<'ctx>) {
+        let ValueType::Callable(function_type) = self.type_ else {
+            todo!();
+        };
+
+        (
+            function_type,
+            self.into_basic_value_enum().into_pointer_value(),
+        )
     }
 }

@@ -121,17 +121,7 @@ impl<'ctx, 'a> Field<'ctx, 'a> {
             .map(|x| x.into_basic_value_enum().into())
             .collect::<Vec<_>>();
 
-        // TODO function_pointer.into_callable()???
-        let (function_type, function_pointer) = match &function_pointer.type_() {
-            ValueType::String => todo!(),
-            ValueType::Class(_) => todo!(),
-            ValueType::Callable(function_type) => (
-                *function_type,
-                function_pointer
-                    .into_basic_value_enum()
-                    .into_pointer_value(),
-            ),
-        };
+        let (function_type, function_pointer) = function_pointer.into_callable();
 
         let result = builder
             .build_indirect_call(function_type, function_pointer, &arguments, "call_result")

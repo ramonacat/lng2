@@ -15,7 +15,6 @@ use crate::{
     codegen::{
         context::{AnyCompilerContext, CompilerContext},
         make_fn_type,
-        stored_value::ValueType,
     },
     module::{CompilerServices, ModuleCompiler},
 };
@@ -299,14 +298,7 @@ impl<'ctx> ObjectFunctions<'ctx> {
         fields_field: PointerValue<'ctx>,
     ) {
         for (index, field) in fields.iter().enumerate() {
-            let (value, value_kind) = match &field.value.type_() {
-                ValueType::String => todo!(),
-                ValueType::Class(_) => todo!(),
-                ValueType::Callable(_) => (
-                    field.value.into_basic_value_enum(),
-                    ObjectFieldKind::Callable,
-                ),
-            };
+            let value = field.value.into_callable().1;
 
             self.store_field(
                 index,
@@ -321,16 +313,22 @@ impl<'ctx> ObjectFunctions<'ctx> {
                 compiler_context,
             );
 
-            self.store_field(index, 1, value, fields_field, builder, compiler_context);
+            self.store_field(
+                index,
+                1,
+                value.as_basic_value_enum(),
+                fields_field,
+                builder,
+                compiler_context,
+            );
 
             self.store_field(
                 index,
                 2,
                 compiler_context
                     .context
-                    .i8_type()
-                    .const_int(value_kind as u64, false)
-                    .as_basic_value_enum(),
+                    .const_u8(ObjectFieldKind::Callable as u8)
+                    .into(),
                 fields_field,
                 builder,
                 compiler_context,
