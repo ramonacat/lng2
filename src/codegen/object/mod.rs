@@ -1,4 +1,3 @@
-use crate::codegen::context::AnyCompilerContext;
 mod representation;
 
 use inkwell::{
@@ -12,7 +11,7 @@ use super::context::FunctionCompilerContext;
 use crate::{
     ADDRESS_SPACE,
     codegen::{
-        context::CompilerContext,
+        context::{AnyCompilerContext, CompilerContext},
         make_fn_type,
         stored_value::{Storage, StoredValue, ValueType},
     },
