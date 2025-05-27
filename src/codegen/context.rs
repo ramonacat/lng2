@@ -18,7 +18,46 @@ pub trait AnyCompilerContext<'ctx, 'a>: Debug {
     fn module(&self) -> &'a Module<'ctx>;
     fn object_functions(&self) -> &'a ObjectFunctions<'ctx>;
     fn identifiers(&self) -> &'a Identifiers;
+    // TODO is this still needed at all?
     fn fatal_error(&self) -> FunctionValue<'ctx>;
+}
+
+pub(super) trait AnyFunctionCompilerContext<'ctx, 'a>: AnyCompilerContext<'ctx, 'a> {
+    fn function_value(&self) -> FunctionValue<'ctx>;
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct GlobalFunctionCompilerContext<'ctx, 'a> {
+    pub compiler_context: CompilerContext<'ctx, 'a>,
+    pub function_value: FunctionValue<'ctx>,
+}
+
+impl<'ctx, 'a> AnyFunctionCompilerContext<'ctx, 'a> for GlobalFunctionCompilerContext<'ctx, 'a> {
+    fn function_value(&self) -> FunctionValue<'ctx> {
+        self.function_value
+    }
+}
+
+impl<'ctx, 'a> AnyCompilerContext<'ctx, 'a> for GlobalFunctionCompilerContext<'ctx, 'a> {
+    fn context(&self) -> &'ctx Context {
+        self.compiler_context.context()
+    }
+
+    fn module(&self) -> &'a Module<'ctx> {
+        self.compiler_context.module()
+    }
+
+    fn object_functions(&self) -> &'a ObjectFunctions<'ctx> {
+        self.compiler_context.object_functions()
+    }
+
+    fn identifiers(&self) -> &'a Identifiers {
+        self.compiler_context.identifiers()
+    }
+
+    fn fatal_error(&self) -> FunctionValue<'ctx> {
+        self.compiler_context.fatal_error()
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -26,6 +65,12 @@ pub struct FunctionCompilerContext<'ctx, 'a, 'class> {
     pub class: ClassCompilerContext<'ctx, 'a, 'class>,
     pub function_value: FunctionValue<'ctx>,
     pub function: &'a Function<FunctionType, ExpressionType>,
+}
+
+impl<'ctx, 'a> AnyFunctionCompilerContext<'ctx, 'a> for FunctionCompilerContext<'ctx, 'a, '_> {
+    fn function_value(&self) -> FunctionValue<'ctx> {
+        self.function_value
+    }
 }
 
 impl<'ctx, 'a> AnyCompilerContext<'ctx, 'a> for FunctionCompilerContext<'ctx, 'a, '_> {

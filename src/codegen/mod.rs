@@ -137,14 +137,15 @@ where
                             self.compile_expression(expression, &scope, &builder, context);
                         }
                         ast::Statement::Return(expression) => {
-                            let value = self
-                                .compile_expression(expression, &scope, &builder, context)
-                                .unwrap();
+                            let value =
+                                self.compile_expression(expression, &scope, &builder, context);
 
-                            // TODO verify that all code paths return compatible types
-                            builder
-                                .build_return(Some(&value.into_basic_value_enum()))
-                                .unwrap();
+                            if let Some(value) = value {
+                                value.build_return(&builder, &context);
+                            } else {
+                                builder.build_return(None).unwrap();
+                            }
+
                             return_built = true;
                         }
                     }
@@ -205,7 +206,7 @@ where
                     .map(|x| self.compile_expression(x, scope, builder, context).unwrap())
                     .collect();
 
-                built_expression.build_call(arguments, builder, context)
+                built_expression.build_call(arguments, builder, &context)
             }
             ast::ExpressionKind::VariableAccess(identifier) => scope.get(*identifier).copied(),
             ast::ExpressionKind::FieldAccess(target, field) => {
@@ -319,7 +320,13 @@ impl<'ctx, 'class> ClassDeclaration<'ctx> {
             self.descriptor
                 .get_field(usize::try_from(*index).unwrap(), compiler_context, builder);
 
-        StoredValue::new(Storage::Field(field_value), ValueType::String)
+        // TODO this will break when we have more than string & callable
+        let value_type = if field_value.type_.is_pointer_type() {
+            ValueType::String
+        } else {
+            ValueType::Callable(field_value.type_.into_function_type())
+        };
+        StoredValue::new(Storage::Field(field_value), value_type)
     }
 }
 

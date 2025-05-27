@@ -9,7 +9,11 @@ use inkwell::{
 };
 use representation::ObjectFieldKind;
 
-use super::{CodegenHelpers as _, context::FunctionCompilerContext, helpers::BuilderHelpers as _};
+use super::{
+    CodegenHelpers as _,
+    context::{AnyFunctionCompilerContext, FunctionCompilerContext, GlobalFunctionCompilerContext},
+    helpers::BuilderHelpers as _,
+};
 use crate::{
     ADDRESS_SPACE,
     codegen::{
@@ -30,7 +34,7 @@ impl<'ctx, 'a> Object<'ctx> {
         field_index: usize,
         context: FunctionCompilerContext<'ctx, '_, '_>,
         builder: &Builder<'ctx>,
-    ) -> Field<'ctx, '_> {
+    ) -> Field<'ctx> {
         let field_count = self.build_load_field_count(&context, builder);
 
         let field_index_too_great = builder
@@ -63,7 +67,6 @@ impl<'ctx, 'a> Object<'ctx> {
             self.build_load_object_field(u32::try_from(field_index).unwrap(), &context, builder);
 
         Field::new(
-            self,
             field,
             make_fn_type(
                 &context.class.class.functions[field_index].prototype,
@@ -164,18 +167,18 @@ impl<'ctx> ObjectFunctions<'ctx> {
         value: BasicValueEnum<'ctx>,
         fields_field: PointerValue<'ctx>,
         builder: &Builder<'ctx>,
-        compiler_context: CompilerContext<'ctx, '_>,
+        compiler_context: &dyn AnyCompilerContext<'ctx, '_>,
     ) {
         let field_ptr = unsafe {
             fields_field.const_gep(
                 self.fields_type,
                 &[
                     compiler_context
-                        .context
+                        .context()
                         .i64_type()
                         .const_int(array_index as u64, false),
                     compiler_context
-                        .context
+                        .context()
                         .i64_type()
                         .const_int(field_index as u64, false),
                 ],
@@ -259,9 +262,14 @@ impl<'ctx> ObjectFunctions<'ctx> {
         );
         fields_value.set_initializer(&self.fields_type.array_type(fields_len).const_zero());
 
+        let function_compiler_context = GlobalFunctionCompilerContext {
+            compiler_context,
+            function_value: constructor,
+        };
+
         self.fill_fields(
             fields,
-            compiler_context,
+            &function_compiler_context,
             &builder,
             fields_value.as_pointer_value(),
         );
@@ -290,21 +298,23 @@ impl<'ctx> ObjectFunctions<'ctx> {
         Object { self_ }
     }
 
-    fn fill_fields(
+    fn fill_fields<'a>(
         &self,
         fields: &[FieldDeclaration<'ctx, '_>],
-        compiler_context: CompilerContext<'ctx, '_>,
+        compiler_context: &dyn AnyFunctionCompilerContext<'ctx, 'a>,
         builder: &Builder<'ctx>,
         fields_field: PointerValue<'ctx>,
-    ) {
+    ) where
+        'ctx: 'a,
+    {
         for (index, field) in fields.iter().enumerate() {
-            let value = field.value.into_callable().1;
+            let value = field.value.into_callable(builder, compiler_context).1;
 
             self.store_field(
                 index,
                 0,
                 compiler_context
-                    .context
+                    .context()
                     .i64_type()
                     .const_int(field.name.into_id() as u64, false)
                     .as_basic_value_enum(),
@@ -326,7 +336,7 @@ impl<'ctx> ObjectFunctions<'ctx> {
                 index,
                 2,
                 compiler_context
-                    .context
+                    .context()
                     .const_u8(ObjectFieldKind::Callable as u8)
                     .into(),
                 fields_field,

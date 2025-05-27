@@ -4,12 +4,12 @@ use inkwell::{
     values::{IntValue, PointerValue},
 };
 
-use super::{Object, representation};
+use super::representation;
 use crate::{
     ADDRESS_SPACE,
     codegen::{
         CodegenHelpers as _, ValueType,
-        context::{AnyCompilerContext, FunctionCompilerContext},
+        context::{AnyCompilerContext, AnyFunctionCompilerContext},
         helpers::BuilderHelpers as _,
         stored_value::{Storage, StoredValue},
     },
@@ -23,34 +23,30 @@ pub struct FieldDeclaration<'ctx, 'class> {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct Field<'ctx, 'a> {
-    #[allow(unused)]
-    pub self_: &'a Object<'ctx>,
+pub struct Field<'ctx> {
     pub value_pointer: PointerValue<'ctx>,
     pub type_: AnyTypeEnum<'ctx>,
 }
 
-impl<'ctx, 'a> Field<'ctx, 'a> {
-    pub const fn new(
-        self_: &'a Object<'ctx>,
-        field: PointerValue<'ctx>,
-        type_: AnyTypeEnum<'ctx>,
-    ) -> Self {
+impl<'ctx> Field<'ctx> {
+    pub const fn new(field: PointerValue<'ctx>, type_: AnyTypeEnum<'ctx>) -> Self {
         Self {
-            self_,
             value_pointer: field,
             type_,
         }
     }
 
-    fn build_read_value(
+    pub(in crate::codegen) fn build_read_value<'a>(
         &self,
         builder: &Builder<'ctx>,
-        context: FunctionCompilerContext<'ctx, '_, '_>,
-    ) -> StoredValue<'ctx, '_> {
+        context: &dyn AnyFunctionCompilerContext<'ctx, 'a>,
+    ) -> StoredValue<'ctx, '_>
+    where
+        'ctx: 'a,
+    {
         // TODO instead of asserting and erroring out on non-callables, we should instead just
         // return a matching Value every time
-        let value_kind = self.build_load_value_kind(builder, &context);
+        let value_kind = self.build_load_value_kind(builder, context);
 
         let is_kind_not_callable = builder
             .build_int_compare(
@@ -65,89 +61,61 @@ impl<'ctx, 'a> Field<'ctx, 'a> {
 
         let then_block = context
             .context()
-            .append_basic_block(context.function_value, "then");
+            .append_basic_block(context.function_value(), "then");
 
         let else_block = context
             .context()
-            .append_basic_block(context.function_value, "else");
+            .append_basic_block(context.function_value(), "else");
 
         builder
             .build_conditional_branch(is_kind_not_callable, then_block, else_block)
             .unwrap();
         builder.position_at_end(then_block);
-        builder.build_fatal_error(1, &context);
+        builder.build_fatal_error(1, context);
 
         builder.position_at_end(else_block);
+
+        StoredValue::new(
+            Storage::Heap(self.build_load_value(builder, context)),
+            ValueType::Callable(self.type_.into_function_type()),
+        )
+    }
+
+    fn build_load_value<'a>(
+        &self,
+        builder: &Builder<'ctx>,
+        context: &dyn AnyCompilerContext<'ctx, 'a>,
+    ) -> PointerValue<'ctx>
+    where
+        'ctx: 'a,
+    {
         let value_pointer = builder
             .build_struct_gep(
                 context.object_functions().fields_type,
                 self.value_pointer,
                 1,
-                "value_pointer",
+                "value_kind_pointer",
             )
             .unwrap();
 
-        let value = builder
+        builder
             .build_load(
                 context.context().ptr_type(*ADDRESS_SPACE),
                 value_pointer,
-                &format!(
-                    "deref_function_{}__{}",
-                    context.identifiers().resolve(context.class.class.name),
-                    context
-                        .identifiers()
-                        .resolve(context.function.prototype.name)
-                ),
+                "value_kind",
             )
-            .unwrap();
-
-        StoredValue::new(
-            Storage::Heap(value.into_pointer_value()),
-            ValueType::Callable(self.type_.into_function_type()),
-        )
+            .unwrap()
+            .into_pointer_value()
     }
 
-    pub(crate) fn build_call<'class>(
-        &self,
-        arguments: Vec<StoredValue<'ctx, 'class>>,
-        builder: &Builder<'ctx>,
-        context: FunctionCompilerContext<'ctx, 'class, '_>,
-    ) -> Option<StoredValue<'ctx, 'class>> {
-        // TODO ensure we have the correct function signature here
-        // TODO handle the return value
-        let function_pointer = self.build_read_value(builder, context);
-        let arguments = arguments
-            .into_iter()
-            .map(|x| x.into_basic_value_enum().into())
-            .collect::<Vec<_>>();
-
-        let (function_type, function_pointer) = function_pointer.into_callable();
-
-        let result = builder
-            .build_indirect_call(function_type, function_pointer, &arguments, "call_result")
-            .unwrap();
-
-        // TODO this will awfully break once there are any types beside string & unit
-        if self.type_.into_function_type().get_return_type().is_some() {
-            Some(StoredValue::new(
-                Storage::Heap(
-                    result
-                        .try_as_basic_value()
-                        .unwrap_left()
-                        .into_pointer_value(),
-                ),
-                ValueType::String,
-            ))
-        } else {
-            None
-        }
-    }
-
-    fn build_load_value_kind(
+    fn build_load_value_kind<'a>(
         &self,
         builder: &Builder<'ctx>,
         context: &dyn AnyCompilerContext<'ctx, 'a>,
-    ) -> IntValue<'ctx> {
+    ) -> IntValue<'ctx>
+    where
+        'ctx: 'a,
+    {
         let value_kind_pointer = builder
             .build_struct_gep(
                 context.object_functions().fields_type,
