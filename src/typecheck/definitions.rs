@@ -1,3 +1,4 @@
+use super::scope::{IntermediateClassType, IntermediateFieldType, Scope};
 use crate::{
     ast::{self, Class, Declaration, Expression, ExpressionKind, Function, SourceFile, Statement},
     identifier::Identifiers,
@@ -11,8 +12,6 @@ use crate::{
         },
     },
 };
-
-use super::scope::{IntermediateClassType, IntermediateFieldType, Scope};
 
 pub(super) struct DefinitionsChecker<'ids> {
     function_id_generator: FunctionIdGenerator,

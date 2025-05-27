@@ -1,9 +1,10 @@
-use crate::types::function::FunctionId;
 use std::fmt::Write;
 
-use crate::{identifier::Identifiers, types::function::FunctionTypeKind};
-
 use super::{NodeType, SourceFile};
+use crate::{
+    identifier::Identifiers,
+    types::function::{FunctionId, FunctionTypeKind},
+};
 
 macro_rules! println_to {
     ($printer:ident, $pattern:literal) => {

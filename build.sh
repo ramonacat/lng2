@@ -3,7 +3,7 @@
 set -euo pipefail
 set -x
 
-cargo fmt
+cargo +nightly fmt
 cargo test
 cargo run
 cargo clippy

@@ -1,12 +1,10 @@
-use std::fmt::Write;
-use std::sync::atomic::AtomicU64;
+use std::{fmt::Write, sync::atomic::AtomicU64};
 
+use super::expression::ExpressionType;
 use crate::{
     ast::{self, NodeType, Statement, pretty::pretty_print_function_type},
     identifier::Identifiers,
 };
-
-use super::expression::ExpressionType;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct FunctionId(u64);

@@ -1,10 +1,10 @@
+use lalrpop_util::{ParseError, lalrpop_mod};
+
 use crate::{
+    identifier::Identifiers,
     parser::grammar::Token,
     types::{UntypedAst, class::ClassIdGenerator},
 };
-use lalrpop_util::{ParseError, lalrpop_mod};
-
-use crate::identifier::Identifiers;
 
 lalrpop_mod!(
     #[allow(

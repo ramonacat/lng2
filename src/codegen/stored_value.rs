@@ -1,14 +1,14 @@
-use crate::codegen::ClassDeclaration;
-use crate::codegen::object::Field;
-use crate::identifier::Identifier;
-use inkwell::builder::Builder;
-use inkwell::types::FunctionType;
-use inkwell::values::BasicValue as _;
-use inkwell::values::BasicValueEnum;
-use inkwell::values::GlobalValue;
-use inkwell::values::PointerValue;
+use inkwell::{
+    builder::Builder,
+    types::FunctionType,
+    values::{BasicValue as _, BasicValueEnum, GlobalValue, PointerValue},
+};
 
 use super::FunctionCompilerContext;
+use crate::{
+    codegen::{ClassDeclaration, object::Field},
+    identifier::Identifier,
+};
 
 #[derive(Debug, Clone, Copy)]
 pub enum Storage<'ctx, 'class> {

@@ -1,8 +1,7 @@
 use std::collections::HashMap;
 
-use crate::identifier::Identifier;
-
 use super::stored_value::StoredValue;
+use crate::identifier::Identifier;
 
 pub struct Scope<'ctx, 'class> {
     variables: HashMap<Identifier, StoredValue<'ctx, 'class>>,

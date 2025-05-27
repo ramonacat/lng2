@@ -1,19 +1,21 @@
+use crate::codegen::context::AnyCompilerContext;
 mod representation;
 
-use crate::codegen::stored_value::Storage;
-use crate::codegen::stored_value::StoredValue;
-use crate::codegen::stored_value::ValueType;
-use crate::codegen::{CompilerContext, make_fn_type};
-use inkwell::types::AnyType;
-use inkwell::types::AnyTypeEnum;
-use inkwell::values::BasicValueEnum;
-use inkwell::values::PointerValue;
-use inkwell::{builder::Builder, types::BasicType, values::BasicValue};
+use inkwell::{
+    builder::Builder,
+    types::{AnyType, AnyTypeEnum, BasicType},
+    values::{BasicValue, BasicValueEnum, PointerValue},
+};
 use representation::ObjectFieldKind;
 
+use super::context::FunctionCompilerContext;
 use crate::{
     ADDRESS_SPACE,
-    codegen::{AnyCompilerContext as _, FunctionCompilerContext},
+    codegen::{
+        context::CompilerContext,
+        make_fn_type,
+        stored_value::{Storage, StoredValue, ValueType},
+    },
     identifier::Identifier,
     module::{CompilerServices, ModuleCompiler},
 };

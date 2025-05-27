@@ -1,15 +1,13 @@
-use crate::ast;
-use crate::ast::Class;
-use crate::ast::Declaration;
-use crate::ast::Function;
-use crate::ast::SourceFile;
-use crate::types::UntypedAst;
-use crate::types::class::ClassId;
-use crate::types::class::UncheckedClassType;
-use crate::types::expression::ExpressionType;
-use crate::types::expression::ExpressionTypeKind;
-use crate::types::function::IntermediateFunctionType;
-use crate::types::function::UncheckedFunctionType;
+use crate::{
+    ast,
+    ast::{Class, Declaration, Function, SourceFile},
+    types::{
+        UntypedAst,
+        class::{ClassId, UncheckedClassType},
+        expression::{ExpressionType, ExpressionTypeKind},
+        function::{IntermediateFunctionType, UncheckedFunctionType},
+    },
+};
 
 pub(super) struct DeclarationsChecker {}
 

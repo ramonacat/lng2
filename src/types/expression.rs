@@ -1,5 +1,6 @@
-use crate::{ast::NodeType, identifier::Identifiers, types::class::ClassId};
 use std::fmt::Write;
+
+use crate::{ast::NodeType, identifier::Identifiers, types::class::ClassId};
 
 #[derive(Clone, Debug)]
 pub enum ExpressionTypeKind {
