@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, fmt::Debug};
 
 use inkwell::{context::Context, module::Module, values::FunctionValue};
 
@@ -13,7 +13,7 @@ use crate::{
     },
 };
 
-pub trait AnyCompilerContext<'ctx, 'a> {
+pub trait AnyCompilerContext<'ctx, 'a>: Debug {
     fn context(&self) -> &'ctx Context;
     fn module(&self) -> &'a Module<'ctx>;
     fn object_functions(&self) -> &'a ObjectFunctions<'ctx>;
@@ -21,7 +21,7 @@ pub trait AnyCompilerContext<'ctx, 'a> {
     fn fatal_error(&self) -> FunctionValue<'ctx>;
 }
 
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy)]
 pub struct FunctionCompilerContext<'ctx, 'a, 'class> {
     pub class: ClassCompilerContext<'ctx, 'a, 'class>,
     pub function_value: FunctionValue<'ctx>,
@@ -50,7 +50,7 @@ impl<'ctx, 'a> AnyCompilerContext<'ctx, 'a> for FunctionCompilerContext<'ctx, 'a
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy)]
 pub struct ClassCompilerContext<'ctx, 'a, 'class> {
     pub compiler: CompilerContext<'ctx, 'a>,
     pub function_declarations: &'a HashMap<FunctionId, FunctionValue<'ctx>>,
@@ -79,7 +79,7 @@ impl<'ctx, 'a> AnyCompilerContext<'ctx, 'a> for ClassCompilerContext<'ctx, 'a, '
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy)]
 pub struct CompilerContext<'ctx, 'a> {
     pub context: &'ctx Context,
     pub module: &'a Module<'ctx>,

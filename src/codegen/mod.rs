@@ -1,14 +1,16 @@
 mod context;
+mod helpers;
 mod object;
 mod scope;
 mod stored_value;
 
 use std::collections::HashMap;
 
+use helpers::CodegenHelpers;
 use inkwell::{
     builder::Builder, context::Context, module::Linkage, types::BasicType, values::FunctionValue,
 };
-use object::{Object, ObjectFunctions};
+use object::{Object, ObjectFunctions, field::FieldDeclaration};
 use scope::Scope;
 
 use crate::{
@@ -282,7 +284,7 @@ impl<'ctx, 'class> ClassDeclaration<'ctx> {
         let mut field_indices = HashMap::new();
 
         for (index, (function_ast, function)) in methods.iter().enumerate() {
-            fields.push(object::FieldDeclaration {
+            fields.push(FieldDeclaration {
                 name: function_ast.prototype.name,
                 value: StoredValue::new(
                     Storage::Global(function.as_global_value()),

@@ -9,6 +9,7 @@ impl Identifier {
     }
 }
 
+#[derive(Debug)]
 pub struct Identifiers {
     interner: StringInterner<StringBackend<SymbolUsize>>,
 }

@@ -4,11 +4,8 @@ use inkwell::{
     values::{BasicValue as _, BasicValueEnum, GlobalValue, PointerValue},
 };
 
-use super::FunctionCompilerContext;
-use crate::{
-    codegen::{ClassDeclaration, object::Field},
-    identifier::Identifier,
-};
+use super::{FunctionCompilerContext, object::field::Field};
+use crate::{codegen::ClassDeclaration, identifier::Identifier};
 
 #[derive(Debug, Clone, Copy)]
 pub enum Storage<'ctx, 'class> {

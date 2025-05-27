@@ -1,68 +1,44 @@
+pub(super) mod field;
 mod representation;
 
+use field::{Field, FieldDeclaration};
 use inkwell::{
     builder::Builder,
-    types::{AnyType, AnyTypeEnum, BasicType},
-    values::{BasicValue, BasicValueEnum, PointerValue},
+    types::{AnyType, BasicType, BasicTypeEnum},
+    values::{BasicValue, BasicValueEnum, IntValue, PointerValue},
 };
 use representation::ObjectFieldKind;
 
-use super::context::FunctionCompilerContext;
+use super::{CodegenHelpers as _, context::FunctionCompilerContext, helpers::BuilderHelpers as _};
 use crate::{
     ADDRESS_SPACE,
     codegen::{
         context::{AnyCompilerContext, CompilerContext},
         make_fn_type,
-        stored_value::{Storage, StoredValue, ValueType},
+        stored_value::ValueType,
     },
-    identifier::Identifier,
     module::{CompilerServices, ModuleCompiler},
 };
-
-#[derive(Debug)]
-pub struct FieldDeclaration<'ctx, 'class> {
-    pub name: Identifier,
-    pub value: StoredValue<'ctx, 'class>,
-}
 
 #[derive(Debug)]
 pub struct Object<'ctx> {
     pub self_: PointerValue<'ctx>,
 }
 
-impl<'ctx> Object<'ctx> {
+impl<'ctx, 'a> Object<'ctx> {
     pub(crate) fn get_field(
         &self,
         field_index: usize,
         context: FunctionCompilerContext<'ctx, '_, '_>,
         builder: &Builder<'ctx>,
     ) -> Field<'ctx, '_> {
-        // TODO verify that the field_index is in bounds
-        let field_count_pointer = builder
-            .build_struct_gep(
-                context.object_functions().object_type,
-                self.self_,
-                1,
-                "field_count",
-            )
-            .unwrap();
-
-        let field_count = builder
-            .build_load(
-                context.context().i64_type(),
-                field_count_pointer,
-                "field_count",
-            )
-            .unwrap();
+        let field_count = self.build_load_field_count(&context, builder);
 
         let field_index_too_great = builder
             .build_int_compare(
                 inkwell::IntPredicate::UGE,
-                context
-                    .context()
-                    .i64_type()
-                    .const_int(field_index as u64, false),
-                field_count.into_int_value(),
+                context.context().const_u64(field_index as u64),
+                field_count,
                 "is_field_index_too_great",
             )
             .unwrap();
@@ -80,52 +56,12 @@ impl<'ctx> Object<'ctx> {
             .unwrap();
 
         builder.position_at_end(then_block);
-        builder
-            .build_direct_call(
-                context.fatal_error(),
-                &[context
-                    .context()
-                    .i64_type()
-                    .const_int(2, false)
-                    .as_basic_value_enum()
-                    .into()],
-                "fatal_error",
-            )
-            .unwrap();
-        builder.build_unreachable().unwrap();
+        builder.build_fatal_error(2, &context);
 
         builder.position_at_end(else_block);
 
-        let fields_pointer = builder
-            .build_struct_gep(
-                context.object_functions().object_type,
-                self.self_,
-                0,
-                "fields",
-            )
-            .unwrap();
-
-        let fields = builder
-            .build_load(
-                context.context().ptr_type(*ADDRESS_SPACE),
-                fields_pointer,
-                "fields",
-            )
-            .unwrap();
-
-        let field = unsafe {
-            builder
-                .build_gep(
-                    context.object_functions().fields_type,
-                    fields.into_pointer_value(),
-                    &[context
-                        .context()
-                        .i64_type()
-                        .const_int(field_index as u64, false)],
-                    "field",
-                )
-                .unwrap()
-        };
+        let field =
+            self.build_load_object_field(u32::try_from(field_index).unwrap(), &context, builder);
 
         Field::new(
             self,
@@ -137,167 +73,85 @@ impl<'ctx> Object<'ctx> {
             .as_any_type_enum(),
         )
     }
-}
 
-#[derive(Debug, Clone, Copy)]
-pub struct Field<'ctx, 'a> {
-    #[allow(unused)]
-    pub self_: &'a Object<'ctx>,
-    pub value_pointer: PointerValue<'ctx>,
-    pub type_: AnyTypeEnum<'ctx>,
-}
+    fn build_load_field(
+        &self,
+        index: u32,
+        value_type: BasicTypeEnum<'ctx>,
+        context: &dyn AnyCompilerContext<'ctx, 'a>,
+        builder: &Builder<'ctx>,
+    ) -> BasicValueEnum<'ctx>
+    where
+        'ctx: 'a,
+    {
+        let fields_pointer = builder
+            .build_struct_gep(
+                context.object_functions().object_type,
+                self.self_,
+                index,
+                "fields",
+            )
+            .unwrap();
 
-impl<'ctx, 'a> Field<'ctx, 'a> {
-    pub const fn new(
-        self_: &'a Object<'ctx>,
-        field: PointerValue<'ctx>,
-        type_: AnyTypeEnum<'ctx>,
-    ) -> Self {
-        Self {
-            self_,
-            value_pointer: field,
-            type_,
-        }
+        builder
+            .build_load(value_type, fields_pointer, "fields")
+            .unwrap()
     }
 
-    fn build_read_value(
+    fn build_load_fields(
         &self,
+        context: &dyn AnyCompilerContext<'ctx, 'a>,
         builder: &Builder<'ctx>,
-        context: FunctionCompilerContext<'ctx, '_, '_>,
-    ) -> StoredValue<'ctx, '_> {
-        // TODO instead of asserting and erroring out on non-callables, we should instead just
-        // return a matching Value every time
-        let value_kind_pointer = builder
-            .build_struct_gep(
-                context.object_functions().fields_type,
-                self.value_pointer,
-                2,
-                "value_kind_pointer",
-            )
-            .unwrap();
-
-        let value_kind = builder
-            .build_load(
-                context.context().i8_type(),
-                value_kind_pointer,
-                "value_kind",
-            )
-            .unwrap();
-
-        let is_kind_not_callable = builder
-            .build_int_compare(
-                inkwell::IntPredicate::NE,
-                value_kind.into_int_value(),
-                context
-                    .context()
-                    .i8_type()
-                    .const_int(ObjectFieldKind::Callable as u64, false),
-                "is_kind_not_callable",
-            )
-            .unwrap();
-
-        let then_block = context
-            .context()
-            .append_basic_block(context.function_value, "then");
-        let else_block = context
-            .context()
-            .append_basic_block(context.function_value, "else");
-
-        builder
-            .build_conditional_branch(is_kind_not_callable, then_block, else_block)
-            .unwrap();
-        builder.position_at_end(then_block);
-        builder
-            .build_direct_call(
-                context.fatal_error(),
-                &[context
-                    .context()
-                    .i64_type()
-                    .const_int(1, false)
-                    .as_basic_value_enum()
-                    .into()],
-                "fatal_error",
-            )
-            .unwrap();
-        builder.build_unreachable().unwrap();
-
-        builder.position_at_end(else_block);
-        let value_pointer = builder
-            .build_struct_gep(
-                context.object_functions().fields_type,
-                self.value_pointer,
-                1,
-                "value_pointer",
-            )
-            .unwrap();
-
-        let value = builder
-            .build_load(
-                context.context().ptr_type(*ADDRESS_SPACE),
-                value_pointer,
-                &format!(
-                    "deref_function_{}__{}",
-                    context.identifiers().resolve(context.class.class.name),
-                    context
-                        .identifiers()
-                        .resolve(context.function.prototype.name)
-                ),
-            )
-            .unwrap();
-
-        StoredValue::new(
-            Storage::Heap(value.into_pointer_value()),
-            ValueType::Callable(self.type_.into_function_type()),
+    ) -> PointerValue<'ctx>
+    where
+        'ctx: 'a,
+    {
+        self.build_load_field(
+            0,
+            context.context().ptr_type(*ADDRESS_SPACE).into(),
+            context,
+            builder,
         )
+        .into_pointer_value()
     }
 
-    pub(crate) fn build_call<'class>(
+    fn build_load_field_count(
         &self,
-        arguments: Vec<StoredValue<'ctx, 'class>>,
+        context: &dyn AnyCompilerContext<'ctx, 'a>,
         builder: &Builder<'ctx>,
-        context: FunctionCompilerContext<'ctx, 'class, '_>,
-    ) -> Option<StoredValue<'ctx, 'class>> {
-        // TODO ensure we have the correct function signature here
-        // TODO handle the return value
-        let function_pointer = self.build_read_value(builder, context);
-        let arguments = arguments
-            .into_iter()
-            .map(|x| x.into_basic_value_enum().into())
-            .collect::<Vec<_>>();
+    ) -> IntValue<'ctx>
+    where
+        'ctx: 'a,
+    {
+        self.build_load_field(1, context.context().i64_type().into(), context, builder)
+            .into_int_value()
+    }
 
-        // TODO function_pointer.into_callable()???
-        let (function_type, function_pointer) = match &function_pointer.type_() {
-            ValueType::String => todo!(),
-            ValueType::Class(_) => todo!(),
-            ValueType::Callable(function_type) => (
-                *function_type,
-                function_pointer
-                    .into_basic_value_enum()
-                    .into_pointer_value(),
-            ),
-        };
+    fn build_load_object_field(
+        &self,
+        field_index: u32,
+        context: &dyn AnyCompilerContext<'ctx, 'a>,
+        builder: &Builder<'ctx>,
+    ) -> PointerValue<'ctx>
+    where
+        'ctx: 'a,
+    {
+        let fields = self.build_load_fields(context, builder);
 
-        let result = builder
-            .build_indirect_call(function_type, function_pointer, &arguments, "call_result")
-            .unwrap();
-
-        // TODO this will awfully break once there are any types beside string & unit
-        if self.type_.into_function_type().get_return_type().is_some() {
-            Some(StoredValue::new(
-                Storage::Heap(
-                    result
-                        .try_as_basic_value()
-                        .unwrap_left()
-                        .into_pointer_value(),
-                ),
-                ValueType::String,
-            ))
-        } else {
-            None
+        unsafe {
+            builder
+                .build_gep(
+                    context.object_functions().fields_type,
+                    fields,
+                    &[context.context().const_u64(u64::from(field_index))],
+                    "field",
+                )
+                .unwrap()
         }
     }
 }
 
+#[derive(Debug)]
 pub struct ObjectFunctions<'ctx> {
     object_type: inkwell::types::StructType<'ctx>,
     fields_type: inkwell::types::StructType<'ctx>,
